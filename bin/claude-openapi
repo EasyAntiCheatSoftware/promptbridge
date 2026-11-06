@@ -1,0 +1,12 @@
+#!/bin/sh
+# Resolve the installed link without changing any existing Claude command.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK=$(readlink "$SELF") || exit 1
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname "$SELF")/.." && pwd) || exit 1
+exec python3 "$ROOT/bridge.py" "$@"
