@@ -116,10 +116,10 @@ def native_case(case, model=app.MODEL):
     with fixture() as remote:
         remote.result = "TOOL_OK" if case == "tool-loop" else "FIXTURE_OK"
         remote.tool_mode = case == "tool-loop"
-        def fake_open(url, key, payload, session, version="2023-06-01"):
-            path = "/v1/messages/count_tokens" if url.endswith("count_tokens") else "/v1/messages"
+        def fake_open(url, key, payload, session, version="2023-06-01", beta=None):
+            path = "/v1/messages/count_tokens" if url.split("?", 1)[0].endswith("count_tokens") else "/v1/messages"
             return original_open(f"http://127.0.0.1:{remote.server_port}" + path,
-                                 key, payload, session, version)
+                                 key, payload, session, version, beta)
         app.open_upstream = fake_open
         args = ["--model", model, "-p", "Run the fixture test.", "--no-session-persistence", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--max-turns", "3"]
         marker = "SYSTEM_PROMPT_MARKER_42"

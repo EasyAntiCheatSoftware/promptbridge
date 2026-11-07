@@ -186,9 +186,10 @@ def credential() -> tuple[str | None, str]:
     data_dir = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
     auth = data_dir / "opencode/auth.json"
     if auth.is_file():
+        providers = ("opencode-go", "opencode") if upstream_url().endswith("/go/anthropic") else ("opencode", "opencode-go")
         try:
             data = json.loads(auth.read_text())
-            for provider in ("opencode", "opencode-go"):
+            for provider in providers:
                 record = data.get(provider, {})
                 if isinstance(record, dict) and record.get("type") == "api" and isinstance(record.get("key"), str) and record["key"].strip():
                     return record["key"].strip(), f"{auth} ({provider}; read-only)"
@@ -202,16 +203,16 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None  # Keep credentials on the explicitly selected endpoint.
 
 
-def open_upstream(url: str, key: str, payload: dict, session: str, version: str = "2023-06-01"):
+def open_upstream(url: str, key: str, payload: dict, session: str, version: str = "2023-06-01", beta: str | None = None):
     timeout = float(os.environ.get("PROMPTBRIDGE_TIMEOUT_SECONDS", os.environ.get("CROUTON_TIMEOUT_SECONDS", str(UPSTREAM_TIMEOUT))))
     if not 1 <= timeout <= 3600:
         raise ValueError("Upstream timeout must be between 1 and 3600 seconds.")
-    req = urllib.request.Request(
-        url, data=json.dumps(payload).encode(), method="POST",
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
-                 "anthropic-version": version, "User-Agent": "claude-openapi/1.0",
-                 "x-opencode-session": session},
-    )
+    headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json",
+               "anthropic-version": version, "User-Agent": "claude-openapi/1.0",
+               "x-opencode-session": session}
+    if beta is not None:
+        headers["anthropic-beta"] = beta
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST", headers=headers)
     return urllib.request.build_opener(NoRedirect).open(req, timeout=timeout)
 
 
@@ -430,10 +431,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 raise ValueError("Free-only mode rejected a paid or unknown model; no upstream call was made.")
             # Gateway receives the genuine request, including native tools,
             # system prompt, tool results, images and stream selection.
-            path = self.path.split("?", 1)[0]
-            response = open_upstream(self.server.upstream + path, self.server.key,
+            response = open_upstream(self.server.upstream + self.path, self.server.key,
                                      payload, self.server.session,
-                                     self.headers.get("anthropic-version", "2023-06-01"))
+                                     self.headers.get("anthropic-version", "2023-06-01"),
+                                     self.headers.get("anthropic-beta"))
         except (ValueError, UnicodeError) as exc:
             return self.reply(400, {"type": "error", "error": {"type": "invalid_request_error", "message": str(exc)}})
         except urllib.error.HTTPError as exc:
@@ -596,23 +597,27 @@ def main(argv: list[str] | None = None) -> int:
     executable = runtime_executable()
     # Validate state/context settings before acquiring listener/thread resources.
     env = isolated_env(model=model, catalog=catalog)
-    save_picker_settings(state_path(), catalog, model, free_only)
+    save_picker_settings(state_path(), catalog, model, free_only,
+                         default_model=saved_model(state_path()) or MODEL)
     previous_native_model = native_saved_model(state_path())
     server = ProxyServer(key, upstream, secrets.token_urlsafe(32), model=model, catalog=catalog, free_only=free_only)
     env.update({"ANTHROPIC_BASE_URL": f"http://127.0.0.1:{server.server_port}", "ANTHROPIC_AUTH_TOKEN": server.token})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
     command = [executable, "--setting-sources", "user", "--model", model,
                "--system-prompt-snapshot", "off", *args]
     child = None
     received_signal = signal.SIGINT
+    thread_started = handler_installed = False
     previous = signal.getsignal(signal.SIGTERM)
     def terminate(signum, frame):
         nonlocal received_signal
         received_signal = signum
         raise KeyboardInterrupt
-    signal.signal(signal.SIGTERM, terminate)
     try:
+        signal.signal(signal.SIGTERM, terminate)
+        handler_installed = True
+        thread.start()
+        thread_started = True
         child = subprocess.Popen(command, env=env)
         result = child.wait()
         return result if result >= 0 else 128 - result
@@ -626,10 +631,17 @@ def main(argv: list[str] | None = None) -> int:
                 child.wait()
         return 128 + received_signal
     finally:
-        signal.signal(signal.SIGTERM, previous)
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
+        try:
+            if handler_installed:
+                signal.signal(signal.SIGTERM, previous)
+        finally:
+            try:
+                if thread_started:
+                    server.shutdown()
+            finally:
+                server.server_close()
+                if thread_started:
+                    thread.join(timeout=2)
         try:
             choice = native_saved_model(state_path())
             if choice is not None and choice != previous_native_model:

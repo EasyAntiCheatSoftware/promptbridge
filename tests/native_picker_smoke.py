@@ -32,6 +32,9 @@ def check():
     with tempfile.TemporaryDirectory(prefix='promptbridge-picker-') as tmp, fixture() as remote:
         work = Path(tmp).resolve(); state = work / 'state'; project = work / 'project'; project.mkdir()
         atomic_json(state, 'models-cache.json', {'data': catalog})
+        atomic_json(state, 'model.json', {'model': 'big-pickle'})
+        # Regression: choosing this same stale native ID used to be lost.
+        atomic_json(state / 'claude', 'settings.json', {'model': 'beam-free'})
         atomic_json(state / 'claude', '.claude.json', {
             'hasCompletedOnboarding': True, 'lastOnboardingVersion': '2.1.318', 'theme': 'dark',
             'projects': {str(project): {'hasTrustDialogAccepted': True}}})
@@ -42,9 +45,9 @@ def check():
             app.state_path = lambda: state
             app.credential = lambda: ('fixture-key', 'fixture')
             original_open = app.open_upstream
-            def local_open(url, key, payload, session, version='2023-06-01'):
-                path = '/v1/messages/count_tokens' if url.endswith('count_tokens') else '/v1/messages'
-                return original_open(f'http://127.0.0.1:{remote.server_port}' + path, key, payload, session, version)
+            def local_open(url, key, payload, session, version='2023-06-01', beta=None):
+                path = '/v1/messages/count_tokens' if url.split('?', 1)[0].endswith('count_tokens') else '/v1/messages'
+                return original_open(f'http://127.0.0.1:{remote.server_port}' + path, key, payload, session, version, beta)
             app.open_upstream = local_open
             try:
                 code = app.main(['--model', 'big-pickle', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--permission-mode', 'default'])

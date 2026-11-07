@@ -219,8 +219,9 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(len(last["data"]), 2)
         self.assertFalse(last["has_more"])
         self.assertEqual(get("/v1/models/iceman-free")["id"], "iceman-free")
-        with self.assertRaises(urllib.error.HTTPError):
+        with self.assertRaises(urllib.error.HTTPError) as raised:
             get("/v1/models?limit=0")
+        raised.exception.close()
 
 
 if __name__ == "__main__":

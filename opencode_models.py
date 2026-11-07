@@ -1,6 +1,6 @@
 """Public OpenCode text-model catalog and atomic, private model preferences."""
 import json
-import math
+from decimal import Decimal, InvalidOperation
 import os
 from pathlib import Path
 import re
@@ -101,7 +101,7 @@ def picker_settings(catalog, selected, free_only=False):
     return {"replaceBuiltInOptions": True, "options": options}
 
 
-def save_picker_settings(state, catalog, selected, free_only=False):
+def save_picker_settings(state, catalog, selected, free_only=False, *, default_model=None):
     """Update only the isolated user's lineup, preserving other native settings."""
     directory = state / "claude"
     if directory.is_symlink():
@@ -115,6 +115,10 @@ def save_picker_settings(state, catalog, selected, free_only=False):
         if not isinstance(settings, dict):
             raise ValueError("Private Claude settings must be a JSON object; settings preserved.")
     settings["modelPicker"] = picker_settings(catalog, selected, free_only)
+    if default_model is not None:
+        # The wrapper's saved preference is authoritative, not an older native
+        # selection. A per-run --model override must never become this default.
+        settings["model"] = model_id(default_model)
     atomic_json(directory, "settings.json", settings)
 
 
@@ -135,7 +139,7 @@ def cached_catalog(directory: Path):
         path = directory / "models-cache.json"
         if path.stat().st_size > MAX_CATALOG_BYTES:
             return []
-        return chat_models(json.loads(path.read_text()))
+        return chat_models(json.loads(path.read_text(), parse_float=str))
     except (OSError, ValueError):
         return []
 
@@ -147,7 +151,8 @@ def fetch_catalog(directory: Path):
         raw = response.read(MAX_CATALOG_BYTES + 1)
     if len(raw) > MAX_CATALOG_BYTES:
         raise ValueError("OpenCode catalog exceeds the metadata size limit.")
-    models = chat_models(json.loads(raw))
+    # Retain exact decimal text: a tiny nonzero JSON number must not round to 0.
+    models = chat_models(json.loads(raw, parse_float=str))
     if not models:
         raise ValueError("OpenCode catalog contains no usable text/chat models.")
     atomic_json(directory, "models-cache.json", {"data": models})
@@ -158,9 +163,9 @@ def price(value):
     try:
         if isinstance(value, bool):
             return None
-        number = float(value)
-        return number if math.isfinite(number) and number >= 0 else None
-    except (ValueError, TypeError):
+        number = Decimal(str(value))
+        return number if number.is_finite() and number >= 0 else None
+    except (InvalidOperation, ValueError, TypeError, OverflowError):
         return None
 
 

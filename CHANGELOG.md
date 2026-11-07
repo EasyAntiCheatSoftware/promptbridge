@@ -1,5 +1,20 @@
 # Changes
 
+## Reliability fixes
+
+- Reconcile stale native model defaults before launch, so selecting an older
+  model actually saves it; one-run model overrides remain temporary.
+- Preserve native anthropic-beta capability headers and request query strings
+  through both message and token-count routes without changing model IDs.
+- Close listeners when worker startup or signal registration fails, without
+  blocking on shutdown of a worker that never started.
+- Prefer the matching Go/Console record during read-only credential lookup;
+  explicit environment and private saved keys retain their existing priority.
+- Compare pricing exactly, preserve decimal metadata as text, and reject huge,
+  nonfinite or nonzero underflow prices without falsely marking them free.
+- Reproduced failures against the prior commit and added targeted regressions;
+  the real native picker now covers a stale-default reselection as well.
+
 ## Clear native OpenCode model picker
 
 - Replace confusing family-alias rows with an explicit native modelPicker lineup

@@ -103,7 +103,8 @@ The public catalog lists supported text/chat models and prices, **not your
 account's access**. `--free-only` refreshes that catalog and permits only models
 whose input/output and any published cache prices are zero; unknown prices and
 paid models are rejected before sending the prompt. This is a catalog-based
-guard, not a provider billing guarantee. To check actual access, use
+guard, not a provider billing guarantee. Decimal catalog numbers are retained
+as exact text in discovery JSON/cache so tiny nonzero prices never round to free. To check actual access, use
 `--opencode-check --model MODEL` (optionally `--free-only`).
 
 OpenCode currently restricts free-tier chat models to its own client, even when
@@ -121,7 +122,9 @@ refresh manually. The native `/model` picker uses a private `modelPicker` lineup
 with real OpenCode names, IDs, and FREE or PAID/UNKNOWN labels, including
 non-Claude models which native gateway discovery filters out. Misleading
 built-in family aliases are hidden. Choose a default with Enter; changes are
-synced to the wrapper's saved preference when the CLI exits normally. The native
+synced to the wrapper's saved preference when the CLI exits normally. Before
+launch, a stale native default is reconciled to the wrapper's saved preference;
+a per-run override is not saved by that reconciliation. The native
 session-only choice does not change that default. An explicit `--settings` file
 containing its own `modelPicker` takes precedence over this generated lineup.
 
@@ -154,6 +157,8 @@ conversation. Other native options pass through unchanged.
   socket inactivity is bounded separately from upstream inference.
 - Outbound HTTPS host/base-path allowlist, redirects disabled, explicit model
   IDs preserved on both supported POST routes, and a 32 MiB request-body cap.
+- Native `anthropic-beta` and `anthropic-version` headers and query strings
+  reach the selected gateway unchanged, including token-count requests.
 - Selected retry/rate-limit/request-id headers are preserved; cookies and
   hop-by-hop upstream headers are not copied blindly.
 - Key updates use an owner-only staged file, fsync and atomic replacement. A
@@ -167,7 +172,8 @@ conversation. Other native options pass through unchanged.
   descendant tool lifecycle remains the native client's responsibility.
 
 Credential precedence: `OPENCODE_API_KEY`, then the private saved key, then a
-read-only lookup of an existing OpenCode API-key store. OAuth records are ignored.
+read-only lookup of an existing OpenCode API-key store. Go routes prefer the
+`opencode-go` record; Console routes prefer `opencode`. OAuth records are ignored.
 State defaults to `./state` and can be relocated with `PROMPTBRIDGE_STATE_DIR`.
 `PROMPTBRIDGE_TIMEOUT_SECONDS` adjusts the upstream socket timeout from its default
 120 seconds, within 1–3600 seconds. This is separate from inbound deadlines.
