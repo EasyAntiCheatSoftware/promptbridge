@@ -23,3 +23,11 @@ Security invariants:
 This repository is not a filesystem sandbox or a replacement for the native
 client's tool-permission controls. Provider access/retention/quota policies are
 external boundaries. Report suspected issues privately to the repository owner.
+
+Runtime platform assurance: macOS requires the Apple-trusted expected signing
+identity. Linux requires the detached vendor manifest signature, pinned primary
+fingerprint and matching binary SHA-256 at installation and every launch. Linux
+verification uses a disposable keyring and never imports into the user's keys.
+Do not replace either check with checksum-only trust. Complete bundles activate
+atomically so a failed update retains matching old binary/metadata. Installers
+never require administrator access; only system dependency installation does.

@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-exec python3 "$ROOT/command_links.py" install
+exec "${PROMPTBRIDGE_PYTHON:-python3}" "$ROOT/install.py" "$@"

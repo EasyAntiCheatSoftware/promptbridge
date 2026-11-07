@@ -4,10 +4,50 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m unittest discover -s tests -v
+      - run: python -B -m unittest discover -s tests -v
+      - name: macOS installation and native tool round-trip
+        if: runner.os == 'macOS'
+        run: |
+          ./install-macos.sh
+          "$HOME/.local/bin/claude-openapi" --version
+          python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
+          ./rollback.sh --check
+          ./rollback.sh
+          test ! -e "$HOME/.local/bin/claude-openapi"
+  arch:
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - name: Arch prerequisites (no partial upgrades)
+        run: pacman -Syu --noconfirm --needed python git gnupg ca-certificates shadow util-linux
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Portable tests on Arch Python
+        run: python -B -m unittest discover -s tests -v
+      - name: Install and execute as an ordinary Arch user
+        run: |
+          useradd -m bridge-test
+          mkdir /tmp/promptbridge
+          tar --exclude=.git -cf - . | tar -xf - -C /tmp/promptbridge
+          chown -R bridge-test:bridge-test /tmp/promptbridge
+          runuser -u bridge-test -- env HOME=/home/bridge-test sh -eu -c '
+            cd /tmp/promptbridge
+            ./install-arch.sh
+            "$HOME/.local/bin/claude-openapi" --version
+            python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
+            ./rollback.sh --check
+            ./rollback.sh
+            test ! -e "$HOME/.local/bin/claude-openapi"
+          '

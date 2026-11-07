@@ -10,33 +10,57 @@ text/chat models. OpenCode translates other native text-model APIs at its gatewa
 The existing `claude-openapi` command is retained for compatibility. No existing
 Claude installation or configuration is overwritten.
 
-## Requirements and setup
+## Easy installation
 
-- macOS, ARM64 or Intel, with Python 3.12 or later.
-- An OpenCode API key and provider-granted model access. A proxy does not remove
-  provider client restrictions, expired-key errors or quota limits.
-- Git for source checkout; the proprietary native executable is **not** stored
-  in this repository.
+Python 3.12+, Git, and macOS (Apple Silicon/Intel) or glibc Linux
+(x86_64/ARM64) are supported. No pip packages, Node or npm are needed.
+The native executable is downloaded independently, never committed to Git.
 
-From the project directory:
+From a checkout of this project, choose your platform:
+
+### Arch Linux
 
 ```sh
-python3 runtime_setup.py
-./install.sh
-claude-openapi --opencode-set-key
-claude-openapi --opencode-models --free
-claude-openapi --opencode-check --model big-pickle
+sudo pacman -Syu --needed python git gnupg ca-certificates
+./install-arch.sh
 ```
 
-The runtime setup downloads a pinned release from the official vendor source,
-checks its published SHA-256, and requires the expected Apple-trusted publisher
-signature and application identity before activation. Every native launch checks
-publisher signature again. A failed check preserves the existing executable.
-No ad-hoc re-signing, global vendor installer, or automatic update is used.
+[Arch: complete setup, updates and removal](docs/install-arch.md).
 
-The default command directory is `/opt/homebrew/bin`; set
-`PROMPTBRIDGE_BIN_DIR` when installing elsewhere. Add that directory to your
-terminal's PATH yourself if needed. Existing unrelated commands are preserved.
+### macOS
+
+```sh
+brew install python git  # skip if Python 3.12+ and Git are already installed
+./install-macos.sh
+```
+
+[macOS: complete setup, updates and removal](docs/install-macos.md).
+
+Both installers verify the native runtime, then install the separate
+`claude-openapi` command in `~/.local/bin` for new checkouts. Add that folder to
+PATH if prompted. Keep the checkout in place. For a custom directory use
+`--bin-dir /your/bin` (or `PROMPTBRIDGE_BIN_DIR`). A matching existing project
+command in `/opt/homebrew/bin` is retained; unrelated commands, original Claude
+settings and shell profiles are preserved. Run project setup without `sudo`.
+`./install.sh` is the shared entry point if dependencies are already present.
+
+After installing:
+
+```sh
+claude-openapi --opencode-set-key
+claude-openapi --opencode-models --free
+claude-openapi --opencode-check --model MODEL_ID
+```
+
+OpenCode credentials and provider-granted access are required for inference,
+not installation. **No OpenRouter account is needed.** A proxy does not remove
+provider client restrictions, expired-key errors or quota limits.
+
+macOS uses the expected Apple-trusted publisher signature and app identity.
+Linux uses a signed vendor manifest with a pinned GPG primary fingerprint and
+SHA-256. Authentication is checked at activation and each native launch.
+Failed runtime updates preserve the previous executable. No global vendor
+installer, ad-hoc signing or automatic runtime update is used.
 
 ## Choose any OpenCode text/chat model
 
@@ -152,6 +176,7 @@ The supplied ignore rules exclude these paths.
 ```
 
 Removal unlinks only the matching installed command and retains all state.
+For a custom `--bin-dir`, set the same `PROMPTBRIDGE_BIN_DIR` on removal.
 `./rollback-rename.sh` restores the former `claude-crouton` command name while
 keeping the **current hardened implementation**, not a vulnerable historical
 copy. It is self-contained, works after moving the package and performs explicit
@@ -160,13 +185,16 @@ new-name command. Run `./install.sh` to install the current name again.
 
 ## Tests
 
+CI runs on Ubuntu, macOS and Arch Linux; macOS and Arch also install the
+authenticated native runtime and exercise a real local tool round-trip.
+
 Portable, credential-free regression suite:
 
 ```sh
 python3 -B -m unittest discover -s tests -v
 ```
 
-On macOS after installing the independently verified runtime, exercise actual
+On macOS or supported Linux after installing the verified runtime, exercise actual
 native prompt and Read-tool behavior against a local dummy model:
 
 ```sh

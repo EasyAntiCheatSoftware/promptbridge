@@ -8,6 +8,15 @@ def matches(link: Path, target: Path) -> bool:
     return link.is_symlink() and os.readlink(link) == str(target)
 
 
+def default_bin_dir(root: Path):
+    if os.environ.get("PROMPTBRIDGE_BIN_DIR"):
+        return Path(os.environ["PROMPTBRIDGE_BIN_DIR"]).expanduser().resolve()
+    legacy = Path("/opt/homebrew/bin")
+    if matches(legacy / "claude-openapi", root / "bin/claude-openapi"):
+        return legacy
+    return Path.home() / ".local/bin"
+
+
 def install(root: Path, bindir: Path, name: str = "claude-openapi"):
     target = root / "bin" / name
     destination = bindir / name
@@ -17,6 +26,7 @@ def install(root: Path, bindir: Path, name: str = "claude-openapi"):
         if matches(destination, target):
             return
         raise ValueError("Destination is occupied; existing command preserved.")
+    bindir.mkdir(parents=True, exist_ok=True)
     destination.symlink_to(target)
 
 
@@ -64,7 +74,7 @@ def undo_rename(root: Path, bindir: Path):
 if __name__ == "__main__":
     import sys
     root = Path(__file__).resolve().parent
-    bindir = Path(os.environ.get("PROMPTBRIDGE_BIN_DIR", "/opt/homebrew/bin"))
+    bindir = default_bin_dir(root)
     action = sys.argv[1] if len(sys.argv) == 2 else ""
     if action == "install":
         install(root, bindir)

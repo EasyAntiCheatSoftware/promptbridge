@@ -1,5 +1,18 @@
 # Changes
 
+## Arch Linux and macOS installers
+
+- Separate one-command setup entry points and guides for Arch Linux and macOS.
+- Arch glibc x86_64/ARM64 target support, with a pinned GPG primary fingerprint,
+  signed release manifests and per-launch executable hash verification.
+- Whole verified runtime bundles activate atomically; failed updates preserve
+  the previous executable and its authentication metadata.
+- User-local command installation by default, with collision checks before
+  downloads and existing matching Homebrew links preserved.
+- Remember the setup interpreter for launching and command removal; no system
+  Python modifications, pip dependencies or shell-profile edits.
+- Installer regression coverage and actual native tool tests on macOS and Arch.
+
 ## Selectable OpenCode models
 
 - Public text/chat model discovery, current-price free filtering and private cache.
