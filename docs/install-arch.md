@@ -51,11 +51,11 @@ For another command directory, use `./install-arch.sh --bin-dir /your/bin`.
 ```sh
 claude-openapi --version
 claude-openapi --opencode-set-key
-claude-openapi --opencode-models --free
-claude-openapi --model MODEL_ID --system-prompt "Your instructions"
+claude-openapi --opencode-select-model --free
+claude-openapi --free-only --system-prompt "Your instructions"
 ```
 
-Replace `MODEL_ID` with a catalog ID you can access. An OpenCode key is needed
+Choose a model by its displayed number or ID; the choice is saved. An OpenCode key is needed
 for inference, not installation/catalog listing. OpenRouter is not involved.
 Provider client restrictions, quota and model availability still apply; a free
 catalog entry does not guarantee access from a third-party client.

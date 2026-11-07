@@ -20,6 +20,8 @@ def model_id(value):
         value = value[len("opencode/"):]
     if value.endswith("[1m]"):
         value = value[:-4]
+    if value.upper().replace("-", "_") in {"MODEL_ID", "YOUR_MODEL_ID", "YOUR_MODEL"}:
+        raise ValueError("MODEL_ID is an example placeholder, not a model. Run claude-openapi --opencode-select-model to choose a real model.")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}", value) or value in ALIASES:
         raise ValueError("Use an explicit OpenCode model ID, such as big-pickle.")
     return value
@@ -83,6 +85,49 @@ def model_name(item):
     if not isinstance(value, str):
         return item["id"]
     return "".join(character for character in value if character.isprintable()) or item["id"]
+
+
+def picker_settings(catalog, selected, free_only=False):
+    """A native lineup: discovery itself drops IDs without claude/anthropic."""
+    entries = {item["id"]: item for item in chat_models({"data": catalog})}
+    entries.setdefault(selected, {"id": model_id(selected)})
+    if free_only:
+        entries = {key: item for key, item in entries.items() if is_free(item)}
+    options = []
+    for item in sorted(entries.values(), key=lambda item: (not is_free(item), model_name(item).casefold(), item["id"])):
+        pricing = "FREE" if is_free(item) else "PAID/UNKNOWN"
+        options.append({"model": item["id"], "label": model_name(item) + " [" + pricing + "]",
+                        "description": item["id"] + " | Catalog pricing only; provider access required"})
+    return {"replaceBuiltInOptions": True, "options": options}
+
+
+def save_picker_settings(state, catalog, selected, free_only=False):
+    """Update only the isolated user's lineup, preserving other native settings."""
+    directory = state / "claude"
+    if directory.is_symlink():
+        raise ValueError("Private Claude settings directory is a symlink; settings preserved.")
+    path = directory / "settings.json"
+    settings = {}
+    if path.exists():
+        if path.stat().st_size > 1024 * 1024:
+            raise ValueError("Private Claude settings exceed 1 MiB; settings preserved.")
+        settings = json.loads(path.read_text())
+        if not isinstance(settings, dict):
+            raise ValueError("Private Claude settings must be a JSON object; settings preserved.")
+    settings["modelPicker"] = picker_settings(catalog, selected, free_only)
+    atomic_json(directory, "settings.json", settings)
+
+
+def native_saved_model(state):
+    path = state / "claude/settings.json"
+    if not path.is_file() or path.stat().st_size > 1024 * 1024:
+        return None
+    settings = json.loads(path.read_text())
+    value = settings.get("model") if isinstance(settings, dict) else None
+    try:
+        return model_id(value) if value is not None else None
+    except ValueError:
+        return None  # Native aliases/old placeholders are not provider IDs.
 
 
 def cached_catalog(directory: Path):

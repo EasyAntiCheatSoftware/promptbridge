@@ -1,5 +1,17 @@
 # Changes
 
+## Clear native OpenCode model picker
+
+- Replace confusing family-alias rows with an explicit native modelPicker lineup
+  including non-Claude OpenCode model names, IDs and pricing labels.
+- Reject literal MODEL_ID/example placeholders before launch or preference writes.
+- Numbered --opencode-select-model menu saves real IDs without inference or keys.
+- Interactive launch refreshes missing/day-old public metadata, retaining cache
+  on failure; free-only still fails closed without fresh catalog pricing.
+- Preserve other private settings and load only the isolated user settings source.
+- Sync native picker default changes on exit; per-session choices stay temporary.
+- Real terminal UI regression checks model labels, selection, saving and next launch.
+
 ## Arch Linux and macOS installers
 
 - Separate one-command setup entry points and guides for Arch Linux and macOS.

@@ -22,6 +22,7 @@ jobs:
           ./install-macos.sh
           "$HOME/.local/bin/claude-openapi" --version
           python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
+          python -B tests/native_picker_smoke.py
           ./rollback.sh --check
           ./rollback.sh
           test ! -e "$HOME/.local/bin/claude-openapi"
@@ -47,6 +48,7 @@ jobs:
             ./install-arch.sh
             "$HOME/.local/bin/claude-openapi" --version
             python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
+            python -B tests/native_picker_smoke.py
             ./rollback.sh --check
             ./rollback.sh
             test ! -e "$HOME/.local/bin/claude-openapi"

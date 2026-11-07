@@ -48,8 +48,8 @@ After installing:
 
 ```sh
 claude-openapi --opencode-set-key
-claude-openapi --opencode-models --free
-claude-openapi --opencode-check --model MODEL_ID
+claude-openapi --opencode-select-model --free
+claude-openapi --free-only
 ```
 
 OpenCode credentials and provider-granted access are required for inference,
@@ -65,6 +65,10 @@ installer, ad-hoc signing or automatic runtime update is used.
 ## Choose any OpenCode text/chat model
 
 ```sh
+# Easiest: choose a named model from a numbered menu and save it.
+claude-openapi --opencode-select-model --free
+claude-openapi
+
 # Fetch the current public catalog; no API key or inference call is needed.
 claude-openapi --opencode-models
 claude-openapi --opencode-models --free
@@ -86,7 +90,10 @@ claude-openapi --free-only --model big-pickle
 Model precedence is per-run `--model` (or `--opencode-model`), then
 `PROMPTBRIDGE_MODEL`, then `OPENCODE_MODEL`, then the private saved default.
 Without any selection, the former `crouton-alpha-free` default is preserved for
-backward compatibility. New IDs work without a code release; they need not be in
+backward compatibility. If that ID is absent from the catalog, an interactive
+first launch asks you to choose a free-listed model rather than silently routing
+to something else. Literal example placeholders such as `MODEL_ID` are rejected
+with a link to the selection command. New IDs work without a code release; they need not be in
 the cached catalog. An `opencode/` prefix is accepted and removed before routing.
 Explicit request IDs are preserved, including native `/model` changes; native
 family/background aliases use the configured model rather than silently picking
@@ -107,9 +114,19 @@ Paid models are supported when explicitly selected and granted by your account.
 System One decision, embedding, audio-only and image-generation endpoints are
 not chat/coding-agent models and are excluded from this adapter's model list.
 
-Run model discovery after installing or when the catalog changes. The cache
-populates the local `/v1/models` picker and supplies model input/context limits
-for subsequent launches. Unknown IDs conservatively use 200K tokens; the legacy
+Interactive startup loads the public catalog automatically when missing or more
+than 24 hours old. A refresh failure retains the cached list; `--free-only`
+always requires a fresh successful catalog fetch. Run `--opencode-models` to
+refresh manually. The native `/model` picker uses a private `modelPicker` lineup
+with real OpenCode names, IDs, and FREE or PAID/UNKNOWN labels, including
+non-Claude models which native gateway discovery filters out. Misleading
+built-in family aliases are hidden. Choose a default with Enter; changes are
+synced to the wrapper's saved preference when the CLI exits normally. The native
+session-only choice does not change that default. An explicit `--settings` file
+containing its own `modelPicker` takes precedence over this generated lineup.
+
+The catalog also supplies input/context limits for subsequent launches.
+Unknown IDs conservatively use 200K tokens; the legacy
 Crouton default retains its known 1M limit. Set
 `PROMPTBRIDGE_CONTEXT_TOKENS` explicitly for an uncataloged model with a smaller
 limit. Restart with `--model MODEL` when changing to a smaller-context model,
@@ -203,6 +220,7 @@ python3 -B tests/native_smoke.py --native-case append
 python3 -B tests/native_smoke.py --native-case file
 python3 -B tests/native_smoke.py --native-case tool-loop
 python3 -B tests/native_smoke.py --native-case tool-loop --model big-pickle
+python3 -B tests/native_picker_smoke.py
 ```
 
 These tests establish local compatibility, not successful live provider access.

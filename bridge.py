@@ -18,13 +18,14 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from runtime_setup import verify_runtime
-from opencode_models import ALIASES, atomic_json, cached_catalog, context_tokens, fetch_catalog, is_free, model_id, model_name, saved_model
+from opencode_models import ALIASES, atomic_json, cached_catalog, context_tokens, fetch_catalog, is_free, model_id, model_name, native_saved_model, save_picker_settings, saved_model
 
 ROOT = Path(__file__).resolve().parent
 MODEL = "crouton-alpha-free"
@@ -41,6 +42,7 @@ HELP = """claude-openapi — separate Claude Code + local OpenCode proxy
 
 Models and settings:
   --opencode-models [--free] [--json]  Refresh/list public text/chat models
+  --opencode-select-model [--free]    Choose/save a model from a numbered list
   --model MODEL                      Select any OpenCode model for this run
   --free-only                        Allow catalog-confirmed zero-price models
   --opencode-set-model MODEL          Save the default model privately
@@ -114,6 +116,51 @@ def list_models(args):
             print(f"{item['id']}\t{'FREE' if is_free(item) else 'PAID/UNKNOWN'}\t{context_tokens(item) or 'unknown'}\t{model_name(item)}")
         print("\nCatalog pricing only; provider client restrictions and quota still apply.")
     return 0
+
+
+def choose_model(catalog, free_only=False):
+    if not sys.stdin.isatty():
+        raise ValueError("Run --opencode-select-model in your terminal, or use --opencode-set-model big-pickle.")
+    choices = sorted((item for item in catalog if not free_only or is_free(item)),
+                     key=lambda item: (not is_free(item), model_name(item).casefold(), item["id"]))
+    if not choices:
+        raise ValueError("No matching text/chat models in the current OpenCode catalog.")
+    print("\nChoose an OpenCode model (catalog pricing is not an access guarantee):")
+    for number, item in enumerate(choices, 1):
+        print(f"  {number:>2}. {model_name(item)} [{'FREE' if is_free(item) else 'PAID/UNKNOWN'}]  ({item['id']})")
+    while True:
+        try:
+            answer = input("Number or exact model ID (q to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if answer.lower() == "q":
+            return None
+        if answer.isascii() and answer.isdigit() and 1 <= int(answer) <= len(choices):
+            choice = choices[int(answer) - 1]["id"]
+        else:
+            choice = next((item["id"] for item in choices if item["id"] == answer), None)
+        if choice is not None:
+            atomic_json(state_path(), "model.json", {"model": choice})
+            print("Saved OpenCode default model:", model_name(next(item for item in choices if item["id"] == choice)), "(" + choice + ")")
+            return choice
+        print("Choose one of the listed numbers or IDs; example placeholders are not model names.")
+
+
+def launch_catalog():
+    catalog = cached_catalog(state_path())
+    if not sys.stdin.isatty():
+        return catalog
+    try:
+        stale = time.time() - (state_path() / "models-cache.json").stat().st_mtime > 86400
+    except OSError:
+        stale = True
+    if not catalog or stale:
+        try:
+            catalog = fetch_catalog(state_path())
+        except (OSError, ValueError):
+            print("OpenCode catalog refresh failed; using cached/selected models. Run --opencode-models to retry.", file=sys.stderr)
+    return catalog
 
 
 def upstream_url() -> str:
@@ -440,6 +487,7 @@ def isolated_env(proxy_url: str = "", token: str = "", model: str = MODEL, catal
         window = int(override)
     env.update({"ANTHROPIC_BASE_URL": proxy_url, "ANTHROPIC_AUTH_TOKEN": token,
                 "ANTHROPIC_API_KEY": "", "ANTHROPIC_MODEL": model,
+                "ANTHROPIC_DEFAULT_MODEL": model,
                 "ANTHROPIC_SMALL_FAST_MODEL": model,
                 "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
                 "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
@@ -488,6 +536,13 @@ def main(argv: list[str] | None = None) -> int:
         atomic_json(state_path(), "model.json", {"model": model})
         print("Saved OpenCode default model:", model)
         return 0
+    if args and args[0] == "--opencode-select-model":
+        if args[1:] not in ([], ["--free"]) or explicit_model is not None:
+            raise ValueError("Usage: --opencode-select-model [--free]")
+        if not sys.stdin.isatty():
+            raise ValueError("Run --opencode-select-model in your terminal for interactive selection.")
+        choose_model(fetch_catalog(state_path()), free_only=free_only or "--free" in args)
+        return 0
     if args == ["--opencode-help"]:
         print(HELP)
         return 0
@@ -505,6 +560,20 @@ def main(argv: list[str] | None = None) -> int:
     informational = args in (["--help"], ["-h"], ["--version"], ["-v"])
     model = (explicit_model or MODEL) if informational else selected_model(explicit_model)
     catalog = fetch_catalog(state_path()) if free_only else cached_catalog(state_path())
+    native_launch = not informational and args not in (["--opencode-status"], ["--opencode-check"])
+    if native_launch:
+        if not free_only:
+            catalog = launch_catalog()
+        # Retain explicit choices, but don't silently route an absent legacy
+        # default to another model. Let first-time interactive users choose.
+        if (sys.stdin.isatty() and explicit_model is None and model == MODEL and catalog
+                and not any(item["id"] == model for item in catalog)
+                and not saved_model(state_path())
+                and not any(os.environ.get(name, "").strip() for name in ("PROMPTBRIDGE_MODEL", "OPENCODE_MODEL"))):
+            print("The former Crouton default is absent from the current catalog. Choose a free-listed default.")
+            model = choose_model(catalog, free_only=True)
+            if model is None:
+                return 0
     if free_only and not is_free(next((item for item in catalog if item["id"] == model), {})):
         raise ValueError("Selected model is not confirmed free in the current catalog.")
     if args == ["--opencode-status"]:
@@ -527,11 +596,13 @@ def main(argv: list[str] | None = None) -> int:
     executable = runtime_executable()
     # Validate state/context settings before acquiring listener/thread resources.
     env = isolated_env(model=model, catalog=catalog)
+    save_picker_settings(state_path(), catalog, model, free_only)
+    previous_native_model = native_saved_model(state_path())
     server = ProxyServer(key, upstream, secrets.token_urlsafe(32), model=model, catalog=catalog, free_only=free_only)
     env.update({"ANTHROPIC_BASE_URL": f"http://127.0.0.1:{server.server_port}", "ANTHROPIC_AUTH_TOKEN": server.token})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    command = [executable, "--setting-sources", "", "--model", model,
+    command = [executable, "--setting-sources", "user", "--model", model,
                "--system-prompt-snapshot", "off", *args]
     child = None
     received_signal = signal.SIGINT
@@ -559,6 +630,14 @@ def main(argv: list[str] | None = None) -> int:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+        try:
+            choice = native_saved_model(state_path())
+            if choice is not None and choice != previous_native_model:
+                if not free_only or is_free(next((item for item in catalog if item["id"] == choice), {})):
+                    atomic_json(state_path(), "model.json", {"model": choice})
+                    print("Saved OpenCode default model:", choice)
+        except (OSError, ValueError):
+            print("Model default update failed; prior saved preference retained. Use --opencode-select-model to retry.", file=sys.stderr)
 
 
 if __name__ == "__main__":

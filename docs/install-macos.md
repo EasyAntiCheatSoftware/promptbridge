@@ -53,11 +53,11 @@ To choose another command directory, use `./install-macos.sh --bin-dir /your/bin
 ```sh
 claude-openapi --version
 claude-openapi --opencode-set-key
-claude-openapi --opencode-models --free
-claude-openapi --model MODEL_ID --system-prompt "Your instructions"
+claude-openapi --opencode-select-model --free
+claude-openapi --free-only --system-prompt "Your instructions"
 ```
 
-Replace `MODEL_ID` with a catalog ID you can access. Inference requires an
+Choose a model by its displayed number or ID; the choice is saved. Inference requires an
 OpenCode key; installation/catalog listing does not. Free-tier client rules,
 quota and model permissions still apply. No OpenRouter account is involved.
 
