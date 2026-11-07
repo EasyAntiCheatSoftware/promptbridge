@@ -1,5 +1,16 @@
 # Changes
 
+## Selectable OpenCode models
+
+- Public text/chat model discovery, current-price free filtering and private cache.
+- Per-run model selection, environment/saved defaults and native model-picker data.
+- Removed the unconditional Crouton request rewrite; explicit model IDs survive.
+- Optional free-only guard blocks paid/unpriced models before an inference call.
+- Model-specific startup context limits replace the blanket 1M-token setting.
+- Neutral management options/environment names with existing aliases retained.
+- Defensive model parsing, atomic preference/cache updates, and expanded tests.
+- Provider free-tier/client restrictions are documented rather than bypassed.
+
 ## Initial hardened source release
 
 - Atomic, owner-only key replacement and explicit invalid-key handling.

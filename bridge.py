@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated Claude launcher and authenticated, model-pinned OpenCode proxy.
+"""Isolated Claude launcher and authenticated, multi-model OpenCode proxy.
 
 OpenCode's gateway performs its documented protocol translation. This proxy
 does not impersonate OpenCode or change an account's access or usage limits.
@@ -24,6 +24,7 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from runtime_setup import verify_runtime
+from opencode_models import ALIASES, atomic_json, cached_catalog, context_tokens, fetch_catalog, is_free, model_id, model_name, saved_model
 
 ROOT = Path(__file__).resolve().parent
 MODEL = "crouton-alpha-free"
@@ -38,29 +39,90 @@ HELP = """claude-openapi — separate Claude Code + local OpenCode proxy
   claude-openapi --append-system-prompt "Additional instructions"
   claude-openapi --append-system-prompt-file /absolute/path/to/rules.md
 
-Extra commands:
-  --crouton-status    Show paths, route and key source (never the key)
-  --crouton-check     Send a tiny live test to OpenCode; report access errors
-  --crouton-set-key   Privately save a NEW key for this command only
-  --crouton-help      Show this help
+Models and settings:
+  --opencode-models [--free] [--json]  Refresh/list public text/chat models
+  --model MODEL                      Select any OpenCode model for this run
+  --free-only                        Allow catalog-confirmed zero-price models
+  --opencode-set-model MODEL          Save the default model privately
+  --opencode-status                  Show model, paths and key source
+  --opencode-check [--model MODEL]    Send a tiny live model/access test
+  --opencode-set-key                 Privately save a key for this command
+  --opencode-help                    Show this help
 
-All model classes are pinned to crouton-alpha-free at the proxy. No paid
-fallback is configured. Existing Claude binaries, login, settings and shell
-profiles are not edited. OpenCode's key validity and usage limits still apply.
+Old --crouton-* help/status/check/set-key options still work. There is no
+automatic paid fallback. Free catalog pricing is not an access guarantee:
+OpenCode's client restrictions, key validity and quota still apply.
+Existing Claude binaries, login, settings and shell profiles are not edited.
 """
 
 
 def state_path() -> Path:
-    return Path(os.environ.get("CROUTON_STATE_DIR", str(ROOT / "state"))).expanduser().resolve()
+    return Path(os.environ.get("PROMPTBRIDGE_STATE_DIR", os.environ.get("CROUTON_STATE_DIR", str(ROOT / "state")))).expanduser().resolve()
+
+
+def selected_model(explicit=None):
+    if explicit is not None:
+        return model_id(explicit)
+    for name in ("PROMPTBRIDGE_MODEL", "OPENCODE_MODEL"):
+        if os.environ.get(name, "").strip():
+            return model_id(os.environ[name])
+    return saved_model(state_path()) or MODEL
+
+
+def model_arguments(args):
+    """Extract only our model selector; preserve native option order and --."""
+    remaining, explicit, free_only = [], None, False
+    index = 0
+    while index < len(args):
+        value = args[index]
+        if value == "--":
+            remaining.extend(args[index:])
+            break
+        if value in ("--system-prompt", "--append-system-prompt", "--system-prompt-file", "--append-system-prompt-file", "--settings", "--agents"):
+            # Prompt/settings text may itself equal one of our option names.
+            remaining.append(value)
+            if index + 1 < len(args):
+                index += 1
+                remaining.append(args[index])
+        elif value == "--free-only":
+            free_only = True
+        elif value in ("--model", "--opencode-model"):
+            index += 1
+            if index >= len(args):
+                raise ValueError("A model ID must follow --model.")
+            explicit = model_id(args[index])
+        elif value.startswith(("--model=", "--opencode-model=")):
+            explicit = model_id(value.split("=", 1)[1])
+        else:
+            remaining.append(value)
+        index += 1
+    return remaining, explicit, free_only
+
+
+def list_models(args):
+    if set(args) - {"--free", "--json"}:
+        raise ValueError("Model listing accepts only --free and --json.")
+    catalog = fetch_catalog(state_path())
+    if "--free" in args:
+        catalog = [item for item in catalog if is_free(item)]
+    catalog.sort(key=lambda item: (not is_free(item), item["id"]))
+    if "--json" in args:
+        print(json.dumps({"data": catalog}, indent=2))
+    else:
+        print("MODEL\tPRICING\tINPUT/CONTEXT TOKENS\tNAME")
+        for item in catalog:
+            print(f"{item['id']}\t{'FREE' if is_free(item) else 'PAID/UNKNOWN'}\t{context_tokens(item) or 'unknown'}\t{model_name(item)}")
+        print("\nCatalog pricing only; provider client restrictions and quota still apply.")
+    return 0
 
 
 def upstream_url() -> str:
-    url = os.environ.get("CROUTON_UPSTREAM", DEFAULT_UPSTREAM).rstrip("/")
+    url = os.environ.get("PROMPTBRIDGE_UPSTREAM", os.environ.get("CROUTON_UPSTREAM", DEFAULT_UPSTREAM)).rstrip("/")
     parsed = urllib.parse.urlsplit(url)
     if (parsed.scheme != "https" or parsed.netloc != "opencode.ai"
             or parsed.path not in ("/inference/anthropic", "/zen", "/inference/go/anthropic")
             or parsed.query or parsed.fragment):
-        raise ValueError("CROUTON_UPSTREAM must be a supported HTTPS OpenCode base URL.")
+        raise ValueError("Upstream must be a supported HTTPS OpenCode base URL.")
     return url
 
 
@@ -81,8 +143,8 @@ def credential() -> tuple[str | None, str]:
             data = json.loads(auth.read_text())
             for provider in ("opencode", "opencode-go"):
                 record = data.get(provider, {})
-                if record.get("type") == "api" and record.get("key"):
-                    return record["key"], f"{auth} ({provider}; read-only)"
+                if isinstance(record, dict) and record.get("type") == "api" and isinstance(record.get("key"), str) and record["key"].strip():
+                    return record["key"].strip(), f"{auth} ({provider}; read-only)"
         except (ValueError, OSError, AttributeError):
             pass
     return None, "No OpenCode API key found; run --crouton-set-key"
@@ -94,9 +156,9 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def open_upstream(url: str, key: str, payload: dict, session: str, version: str = "2023-06-01"):
-    timeout = float(os.environ.get("CROUTON_TIMEOUT_SECONDS", str(UPSTREAM_TIMEOUT)))
+    timeout = float(os.environ.get("PROMPTBRIDGE_TIMEOUT_SECONDS", os.environ.get("CROUTON_TIMEOUT_SECONDS", str(UPSTREAM_TIMEOUT))))
     if not 1 <= timeout <= 3600:
-        raise ValueError("CROUTON_TIMEOUT_SECONDS must be between 1 and 3600.")
+        raise ValueError("Upstream timeout must be between 1 and 3600 seconds.")
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(), method="POST",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
@@ -142,10 +204,16 @@ class ProxyServer(ThreadingHTTPServer):
     block_on_close = False
 
     def __init__(self, key: str, upstream: str, token: str, *, max_clients: int = 24,
-                 header_timeout: float = 10.0, io_timeout: float = 10.0):
+                 header_timeout: float = 10.0, io_timeout: float = 10.0,
+                 model: str = MODEL, catalog=None, free_only=False):
         if max_clients < 1 or header_timeout <= 0 or io_timeout <= 0:
             raise ValueError("Proxy resource limits must be positive.")
         self.key, self.upstream, self.token = key, upstream, token
+        self.model = model_id(model)
+        self.catalog = {item["id"]: item for item in (catalog or [])}
+        self.free_only = free_only
+        if free_only and not is_free(self.catalog.get(self.model, {})):
+            raise ValueError("Selected model is not confirmed free in the current catalog.")
         self.header_timeout, self.io_timeout = header_timeout, io_timeout
         self._slots = threading.BoundedSemaphore(max_clients)
         self._clients = set()
@@ -252,8 +320,38 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.authenticated():
             return self.reply(401, {"type": "error", "error": {"type": "authentication_error", "message": "Local proxy token required"}})
-        if self.path == "/v1/models":
-            return self.reply(200, {"data": [{"id": MODEL, "type": "model", "display_name": "Crouton Alpha Free", "created_at": "2026-11-03T00:00:00Z"}], "has_more": False, "first_id": MODEL, "last_id": MODEL})
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/v1/models" or parsed.path.startswith("/v1/models/"):
+            catalog = dict(self.server.catalog)
+            catalog.setdefault(self.server.model, {"id": self.server.model, "name": self.server.model})
+            if self.server.free_only:
+                catalog = {identifier: item for identifier, item in catalog.items() if is_free(item)}
+            data = [{"id": item["id"], "type": "model", "display_name": model_name(item), "created_at": "2026-01-01T00:00:00Z"} for item in sorted(catalog.values(), key=lambda item: item["id"])]
+            if parsed.path != "/v1/models":
+                identifier = urllib.parse.unquote(parsed.path[len("/v1/models/"):])
+                item = next((item for item in data if item["id"] == identifier), None)
+                return self.reply(200, item) if item else self.reply(404, {"error": {"message": "Model not in this session's catalog; refresh model discovery or relaunch with --model."}})
+            try:
+                query = urllib.parse.parse_qs(parsed.query)
+                if any(len(values) != 1 for values in query.values()):
+                    raise ValueError("Duplicate pagination parameter")
+                limit = int(query.get("limit", ["1000"])[0])
+                if not 1 <= limit <= 1000:
+                    raise ValueError("Model-list limit must be between 1 and 1000")
+                after, before = query.get("after_id"), query.get("before_id")
+                if after and before:
+                    raise ValueError("Choose only one model-list cursor")
+                if after or before:
+                    cursor = (after or before)[0]
+                    positions = [i for i, item in enumerate(data) if item["id"] == cursor]
+                    if not positions:
+                        raise ValueError("Unknown model-list cursor")
+                    data = data[positions[0] + 1:] if after else data[:positions[0]]
+                more = len(data) > limit
+                data = data[:limit]
+            except ValueError as exc:
+                return self.reply(400, {"error": {"message": str(exc)}})
+            return self.reply(200, {"data": data, "has_more": more, "first_id": data[0]["id"] if data else None, "last_id": data[-1]["id"] if data else None})
         return self.reply(404, {"error": {"message": "Unknown endpoint"}})
 
     def do_POST(self):
@@ -276,7 +374,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw)
             if not isinstance(payload, dict):
                 raise ValueError("JSON object required")
-            payload["model"] = MODEL
+            requested = payload.get("model", self.server.model)
+            # Native family aliases use the configured model; explicit IDs
+            # (including in-session /model changes) are no longer overwritten.
+            native_alias = requested[:-4] if isinstance(requested, str) and requested.endswith("[1m]") else requested
+            payload["model"] = self.server.model if isinstance(native_alias, str) and native_alias in ALIASES else model_id(requested)
+            if self.server.free_only and not is_free(self.server.catalog.get(payload["model"], {})):
+                raise ValueError("Free-only mode rejected a paid or unknown model; no upstream call was made.")
             # Gateway receives the genuine request, including native tools,
             # system prompt, tool results, images and stream selection.
             path = self.path.split("?", 1)[0]
@@ -311,7 +415,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 pass
 
 
-def isolated_env(proxy_url: str = "", token: str = "") -> dict[str, str]:
+def isolated_env(proxy_url: str = "", token: str = "", model: str = MODEL, catalog=None) -> dict[str, str]:
     state = state_path()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     state.chmod(0o700)
@@ -327,25 +431,33 @@ def isolated_env(proxy_url: str = "", token: str = "") -> dict[str, str]:
                 ("OPENCODE_API_KEY", "CROUTON_UPSTREAM", "CROUTON_STATE_DIR")):
             env.pop(name, None)
     env.update({k: str(v) for k, v in paths.items()})
+    metadata = next((item for item in (catalog or []) if item["id"] == model), {})
+    window = context_tokens(metadata) or (1048576 if model == MODEL else 200000)
+    if "PROMPTBRIDGE_CONTEXT_TOKENS" in os.environ:
+        override = os.environ["PROMPTBRIDGE_CONTEXT_TOKENS"]
+        if not override.isascii() or not override.isdigit() or int(override) < 1:
+            raise ValueError("PROMPTBRIDGE_CONTEXT_TOKENS must be a positive integer.")
+        window = int(override)
     env.update({"ANTHROPIC_BASE_URL": proxy_url, "ANTHROPIC_AUTH_TOKEN": token,
-                "ANTHROPIC_API_KEY": "", "ANTHROPIC_MODEL": MODEL,
-                "ANTHROPIC_SMALL_FAST_MODEL": MODEL,
-                "ANTHROPIC_DEFAULT_OPUS_MODEL": MODEL,
-                "ANTHROPIC_DEFAULT_SONNET_MODEL": MODEL,
-                "ANTHROPIC_DEFAULT_HAIKU_MODEL": MODEL,
-                "ANTHROPIC_DEFAULT_FABLE_MODEL": MODEL,
-                "ANTHROPIC_CUSTOM_MODEL_OPTION": MODEL,
-                "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Crouton Alpha Free",
+                "ANTHROPIC_API_KEY": "", "ANTHROPIC_MODEL": model,
+                "ANTHROPIC_SMALL_FAST_MODEL": model,
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
+                "ANTHROPIC_DEFAULT_FABLE_MODEL": model,
+                "ANTHROPIC_CUSTOM_MODEL_OPTION": model,
+                "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": model_name(dict(metadata, id=model)),
                 "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "OpenCode via private local proxy",
-                "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1048576",
-                "CLAUDE_CODE_SUBAGENT_MODEL": MODEL, "DISABLE_AUTOUPDATER": "1", "DISABLE_UPDATES": "1",
+                "CLAUDE_CODE_MAX_CONTEXT_TOKENS": str(window),
+                "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+                "CLAUDE_CODE_SUBAGENT_MODEL": model, "DISABLE_AUTOUPDATER": "1", "DISABLE_UPDATES": "1",
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
                 "DISABLE_TELEMETRY": "1", "DISABLE_ERROR_REPORTING": "1"})
     return env
 
 
-def check(key: str, upstream: str) -> int:
-    payload = {"model": MODEL, "max_tokens": 64, "stream": False,
+def check(key: str, upstream: str, model: str = MODEL) -> int:
+    payload = {"model": model, "max_tokens": 64, "stream": False,
                "messages": [{"role": "user", "content": "Reply with exactly OK."}]}
     try:
         with open_upstream(upstream + "/v1/messages", key, payload, "ses_" + uuid.uuid4().hex) as response:
@@ -364,10 +476,22 @@ def check(key: str, upstream: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if args == ["--crouton-help"]:
+    args, explicit_model, free_only = model_arguments(args)
+    aliases = {"--crouton-help": "--opencode-help", "--crouton-status": "--opencode-status", "--crouton-check": "--opencode-check", "--crouton-set-key": "--opencode-set-key"}
+    args = [aliases.get(value, value) if index == 0 else value for index, value in enumerate(args)]
+    if args and args[0] == "--opencode-models":
+        return list_models(args[1:])
+    if args and args[0] == "--opencode-set-model":
+        if len(args) != 2 or explicit_model is not None or free_only:
+            raise ValueError("Usage: --opencode-set-model MODEL")
+        model = model_id(args[1])
+        atomic_json(state_path(), "model.json", {"model": model})
+        print("Saved OpenCode default model:", model)
+        return 0
+    if args == ["--opencode-help"]:
         print(HELP)
         return 0
-    if args == ["--crouton-set-key"]:
+    if args == ["--opencode-set-key"]:
         if not sys.stdin.isatty():
             print("Run --crouton-set-key in your terminal for private key entry.", file=sys.stderr)
             return 2
@@ -378,29 +502,36 @@ def main(argv: list[str] | None = None) -> int:
         save_key(state_path(), value)
         print("Saved for claude-openapi only. Existing OpenCode and Claude credentials unchanged.")
         return 0
-    if args == ["--crouton-status"]:
+    informational = args in (["--help"], ["-h"], ["--version"], ["-v"])
+    model = (explicit_model or MODEL) if informational else selected_model(explicit_model)
+    catalog = fetch_catalog(state_path()) if free_only else cached_catalog(state_path())
+    if free_only and not is_free(next((item for item in catalog if item["id"] == model), {})):
+        raise ValueError("Selected model is not confirmed free in the current catalog.")
+    if args == ["--opencode-status"]:
         _, source = credential()
-        print(json.dumps({"model": MODEL, "upstream": upstream_url(), "key_source": source,
+        print(json.dumps({"model": model, "upstream": upstream_url(), "key_source": source,
                           "runtime": str(ROOT / "runtime/claude"), "private_state": str(state_path()),
-                          "paid_fallback": False}, indent=2))
+                          "automatic_fallback": False, "free_only": free_only, "cached_chat_models": len(catalog)}, indent=2))
         return 0
     if args in (["--help"], ["-h"], ["--version"], ["-v"]):
         if args in (["--help"], ["-h"]):
             print(HELP, flush=True)
-        return subprocess.call([runtime_executable(), *args], env=isolated_env())
+        return subprocess.call([runtime_executable(), *args], env=isolated_env(model=model, catalog=catalog))
     key, source = credential()
     if not key:
         print(source, file=sys.stderr)
         return 2
     upstream = upstream_url()
-    if args == ["--crouton-check"]:
-        return check(key, upstream)
+    if args == ["--opencode-check"]:
+        return check(key, upstream, model)
     executable = runtime_executable()
-    server = ProxyServer(key, upstream, secrets.token_urlsafe(32))
+    # Validate state/context settings before acquiring listener/thread resources.
+    env = isolated_env(model=model, catalog=catalog)
+    server = ProxyServer(key, upstream, secrets.token_urlsafe(32), model=model, catalog=catalog, free_only=free_only)
+    env.update({"ANTHROPIC_BASE_URL": f"http://127.0.0.1:{server.server_port}", "ANTHROPIC_AUTH_TOKEN": server.token})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    env = isolated_env(f"http://127.0.0.1:{server.server_port}", server.token)
-    command = [executable, "--setting-sources", "", "--model", MODEL,
+    command = [executable, "--setting-sources", "", "--model", model,
                "--system-prompt-snapshot", "off", *args]
     child = None
     received_signal = signal.SIGINT

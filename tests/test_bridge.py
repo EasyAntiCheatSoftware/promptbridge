@@ -257,7 +257,7 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(self.request(method="GET", path="/v1/models")[0], 200)
         for path in ("/v1/messages", "/v1/messages/count_tokens"):
             self.assertEqual(self.request(path=path, auth="api-key")[0], 200)
-            self.assertEqual(self.upstream.received[-1]["model"], bridge.MODEL)
+            self.assertEqual(self.upstream.received[-1]["model"], "other")
             self.assertEqual(self.upstream.received[-1]["system"], "fixture-system")
         self.assertEqual(self.request(path="/unknown")[0], 404)
 

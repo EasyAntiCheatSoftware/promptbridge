@@ -14,6 +14,11 @@ Security invariants:
    including under Python optimization and partial failure.
 6. Native executables must pass checksum/publisher verification before activation;
    do not bypass this by ad-hoc signing or disabling platform checks.
+7. Respect explicit OpenCode model IDs. Never silently redirect a free selection
+   to a paid model. Free-only sessions must reject paid or unpriced request IDs
+   using the current public catalog, including in-session switches.
+8. Model discovery is public metadata only: never send credentials or prompts
+   with catalog requests. Persist preferences/cache atomically with private modes.
 
 This repository is not a filesystem sandbox or a replacement for the native
 client's tool-permission controls. Provider access/retention/quota policies are

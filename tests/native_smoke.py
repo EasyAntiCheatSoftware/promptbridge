@@ -105,12 +105,13 @@ def fixture():
     finally: server.shutdown(); server.server_close(); thread.join(2)
 
 
-def native_case(case):
+def native_case(case, model=app.MODEL):
     project = WORK / "fixture-project"; project.mkdir(exist_ok=True)
     (project / "read-proof.txt").write_text("READ_PROOF_42\n")
     os.chdir(project)
     app.state_path = lambda: WORK / "test-state" / case
     app.credential = lambda: ("fixture-upstream-key", "fixture")
+    app.cached_catalog = lambda _: [{"id": model, "name": model, "limit": {"context": 200000}}]
     original_open = app.open_upstream
     with fixture() as remote:
         remote.result = "TOOL_OK" if case == "tool-loop" else "FIXTURE_OK"
@@ -120,7 +121,7 @@ def native_case(case):
             return original_open(f"http://127.0.0.1:{remote.server_port}" + path,
                                  key, payload, session, version)
         app.open_upstream = fake_open
-        args = ["-p", "Run the fixture test.", "--no-session-persistence", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--max-turns", "3"]
+        args = ["--model", model, "-p", "Run the fixture test.", "--no-session-persistence", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--max-turns", "3"]
         marker = "SYSTEM_PROMPT_MARKER_42"
         if case == "replacement": args += ["--system-prompt", marker, "--tools", ""]
         elif case == "append": args += ["--append-system-prompt", marker, "--tools", ""]
@@ -133,7 +134,7 @@ def native_case(case):
         messages = [r["body"] for r in remote.requests if not r["path"].endswith("count_tokens")]
         assert result == 0, result
         assert messages, "Real CLI did not make a messages request"
-        assert all(m["model"] == app.MODEL for m in messages)
+        assert all(m["model"] == model for m in messages)
         first = messages[0]
         system = first.get("system", "")
         text = system if isinstance(system,str) else "\n".join(b.get("text","") for b in system)
@@ -142,7 +143,7 @@ def native_case(case):
         if case == "tool-loop":
             assert remote.tool_results, "No native Read tool result"
             assert "READ_PROOF_42" in json.dumps(remote.tool_results), "Read content did not return to model"
-        print(json.dumps({"case":case,"custom_prompt_forwarded":True,"pinned_models":sorted(set(m["model"] for m in messages)),
+        print(json.dumps({"case":case,"custom_prompt_forwarded":True,"routed_models":sorted(set(m["model"] for m in messages)),
                           "message_requests":len(messages),"system_characters":len(text),"read_tool_round_trip":bool(remote.tool_results)}))
         return result
 
@@ -150,4 +151,6 @@ def native_case(case):
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--native-case":
         sys.exit(native_case(sys.argv[2]))
-    raise SystemExit("Pass --native-case replacement|append|file|tool-loop")
+    if len(sys.argv) == 5 and sys.argv[1] == "--native-case" and sys.argv[3] == "--model":
+        sys.exit(native_case(sys.argv[2], sys.argv[4]))
+    raise SystemExit("Pass --native-case replacement|append|file|tool-loop [--model MODEL]")
