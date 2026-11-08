@@ -131,14 +131,22 @@ class SelectionTests(unittest.TestCase):
     def test_env_matches_chosen_model_and_real_context(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(bridge, "state_path", lambda: Path(tmp)):
             env = bridge.isolated_env(model="big-pickle", catalog=[entry("big-pickle", context=128000)])
-            for name in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+            for name in ("ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
                 self.assertEqual(env[name], "big-pickle")
+            self.assertFalse("ANTHROPIC_MODEL" in env, "Child environment still hard-pins ANTHROPIC_MODEL")
             self.assertEqual(env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "128000")
             self.assertEqual(bridge.isolated_env(model="unknown")["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "200000")
             with patch.dict(os.environ, {"PROMPTBRIDGE_CONTEXT_TOKENS": "32768"}):
                 self.assertEqual(bridge.isolated_env(model="unknown")["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "32768")
             with patch.dict(os.environ, {"PROMPTBRIDGE_CONTEXT_TOKENS": "nan"}), self.assertRaises(ValueError):
                 bridge.isolated_env(model="unknown")
+
+    def test_native_model_pin_is_removed_only_from_child_environment(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bridge, 'state_path', lambda: Path(tmp)), patch.dict(os.environ, {'ANTHROPIC_MODEL':'parent-model'}):
+            environment=bridge.isolated_env(model='crouton-alpha-free')
+            self.assertFalse('ANTHROPIC_MODEL' in environment, 'Child environment still hard-pins ANTHROPIC_MODEL')
+            self.assertEqual(environment['ANTHROPIC_DEFAULT_MODEL'],'crouton-alpha-free')
+            self.assertEqual(os.environ['ANTHROPIC_MODEL'],'parent-model')
 
     def test_free_only_rejects_paid_before_credential_use(self):
         with patch.object(bridge, "fetch_catalog", return_value=CATALOG), patch.object(bridge, "credential", side_effect=AssertionError("Must not read credentials")):

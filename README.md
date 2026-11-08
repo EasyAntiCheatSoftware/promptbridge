@@ -1,22 +1,38 @@
 # Promptbridge
 
-A small, local coding-agent gateway with private configuration, per-session
-authentication, bounded connections and editable system prompts.
+A local gateway that runs an independent Claude Code CLI against OpenCode's
+Anthropic-compatible inference API. It adds a colored terminal dashboard, model
+selection, saved instructions, private credentials, saved chats and confirmed
+GitHub updates. Your normal Claude installation/configuration is not changed.
 
-The project name is provider-neutral for a future OpenAI API port. **That port
-is not implemented yet:** the current adapter runs a separate Claude Code CLI
-against OpenCode's Anthropic-compatible gateway, with selectable OpenCode
-text/chat models. OpenCode translates other native text-model APIs at its gateway.
-The existing `claude-openapi` command is retained for compatibility. No existing
-Claude installation or configuration is overwritten.
+**Current transport: direct OpenCode API.** Promptbridge does not run the
+OpenCode TUI/server as its backend. The provider-neutral name leaves room for a
+future OpenAI API adapter; **that adapter is not implemented**.
 
-## Easy installation
+## Important: model pricing is not model access
 
-Python 3.12+, Git, and macOS (Apple Silicon/Intel) or glibc Linux
-(x86_64/ARM64) are supported. No pip packages, Node or npm are needed.
-The native executable is downloaded independently, never committed to Git.
+**A model working in OpenCode does not guarantee it works through Promptbridge.**
+OpenCode documents that Console free-tier chat access is limited to OpenCode.
+Other clients need provider-granted API access, such as an eligible Go account
+or paid-model access. See the [official Console access rules](https://opencode.ai/docs/console/models/#endpoints).
 
-From a checkout of this project, choose your platform:
+`[FREE]` in the picker means zero published catalog prices—not unlimited usage,
+client eligibility, regional availability or a billing guarantee. Promptbridge
+does not impersonate OpenCode, reset quotas, or silently fall back to paid models.
+Local dummy-backend tests verify compatibility, not live account/model access.
+
+## Install
+
+Supported: Python 3.12+, Git, macOS Apple Silicon/Intel, and glibc Linux
+x86_64/ARM64. No pip packages, Node or npm are required. Native runtimes are
+pinned and downloaded separately; they are never committed to this repository.
+
+Get the project once, or open your existing checkout:
+
+```sh
+git clone https://github.com/EasyAntiCheatSoftware/promptbridge.git
+cd promptbridge
+```
 
 ### Arch Linux
 
@@ -25,277 +41,274 @@ sudo pacman -Syu --needed python git gnupg ca-certificates
 ./install-arch.sh
 ```
 
-[Arch: complete setup, updates and removal](docs/install-arch.md).
+Use a full system upgrade, not an Arch partial upgrade. Only dependency setup
+needs administrator access. [Complete Arch instructions](docs/install-arch.md).
 
 ### macOS
 
 ```sh
-brew install python git  # skip if Python 3.12+ and Git are already installed
+brew install python git  # skip if Python 3.12+ and Git are already available
 ./install-macos.sh
 ```
 
-[macOS: complete setup, updates and removal](docs/install-macos.md).
+[Complete macOS instructions](docs/install-macos.md).
 
-Both installers verify the native runtime, then install the separate
-`promptbridge` dashboard and compatible `claude-openapi` command in `~/.local/bin` for new checkouts. Add that folder to
-PATH if prompted. Keep the checkout in place. For a custom directory use
-`--bin-dir /your/bin` (or `PROMPTBRIDGE_BIN_DIR`). A matching existing project
-command in `/opt/homebrew/bin` is retained; unrelated commands, original Claude
-settings and shell profiles are preserved. Run project setup without `sudo`.
-`./install.sh` is the shared entry point if dependencies are already present.
+Run project setup **without sudo**. New installs put `promptbridge` and its
+compatible `claude-openapi` alias in `~/.local/bin`; add that directory to PATH
+if prompted. `--bin-dir /your/bin` or `PROMPTBRIDGE_BIN_DIR` chooses another
+location. A matching existing `/opt/homebrew/bin` installation is retained;
+unrelated commands and shell profiles are preserved. Keep the checkout/package
+in place: installed commands link to it. `./install.sh` is the shared installer.
 
-After installing, type **`promptbridge`**. Use arrows/Enter or number shortcuts:
-set a hidden API key, choose a real model name, edit saved instructions, start a
-chat, or continue/resume saved work. The default dashboard is free-only; enabling
-paid/unknown models requires explicit confirmation. `claude-openapi` with no
-arguments opens the same dashboard. Existing command-line options still work.
+macOS verifies the expected Apple-trusted publisher/app signature. Linux verifies
+a signed vendor manifest with a pinned GPG fingerprint and the executable's
+SHA-256. Verification runs at activation and every native launch. No global
+vendor installer, ad-hoc signing or disabled signature checks are used.
 
-OpenCode credentials and provider-granted access are required for inference,
-not installation. **No OpenRouter account is needed.** A proxy does not remove
-provider client restrictions, expired-key errors or quota limits.
+## Everyday use
 
-macOS uses the expected Apple-trusted publisher signature and app identity.
-Linux uses a signed vendor manifest with a pinned GPG primary fingerprint and
-SHA-256. Authentication is checked at activation and each native launch.
-Failed runtime updates preserve the previous executable. No global vendor
-installer or ad-hoc signing is used. A confirmed Promptbridge update refreshes
-the native runtime only when its signed, pinned version changes.
+Type **`promptbridge`** from your project folder. Arrows/Enter, j/k and number
+shortcuts operate the dashboard; terminal text is not a mouse-button interface.
+`TERM=dumb` or a small terminal uses numbered input: Enter chooses the default,
+invalid input retries, and q goes back. `NO_COLOR=1` disables colors.
 
-## Dashboard and updates
+The home menu supports:
 
-Launch `promptbridge` from your project folder. The home screen includes new,
-continue and resume chat actions, a searchable/paged model list, saved system
-instructions (append/replace/off), hidden key entry, updates and settings.
-Choices persist across restarts; chats stay under the same isolated private
-state. A fresh installation prompts for a missing OpenCode key privately before
-starting a chat; keys are machine-local and are never transferred through GitHub.
-Native first-run theme, security notice and workspace-trust screens still apply.
-Only approve a folder you intend to let the coding CLI access; its default
-“No, exit” closes without starting a chat. The bridge never preapproves trust.
+- Start a new chat, continue the last chat in this folder, or select one to resume.
+- Search/page through models and save a default.
+- Edit persistent system instructions: append, replace or disable.
+- Save/replace an OpenCode key using hidden input.
+- Check updates, roll back, and inspect settings or the last failure.
 
-Startup failures now keep a small owner-only `state/last-launch.json` report,
-shown under **Settings → Last failure details**. Missing keys, native exits and
-provider HTTP failures are distinguished. Reports contain fixed, sanitized
-status summaries—not raw provider bodies, headers, keys or prompt text—and
-are never uploaded. A provider 401/403/429 is not a successful model-access test.
- No background service needs to stay open overnight. The original Claude
-setup remains separate. `NO_COLOR=1` disables colors; `TERM=dumb` uses numbered
-input instead of cursor navigation. Enter selects the default in either mode;
-application-keypad/CSI-u Enter is also recognized. Unrelated terminal reports
-are ignored rather than cancelling a menu. Invalid numbered input is retried instead of closing the menu. Chat launch
-progress is shown immediately, and a failed native exit stays visible until
-you acknowledge it. Use the keyboard rather than clicking terminal text. `$VISUAL` / `$EDITOR` edits staged private
-instructions, with nano/vi or multiline entry as fallbacks.
+A missing key is requested privately before launching. Credentials are local to
+your machine; GitHub updates do not transfer them. No OpenRouter account is used.
+Native first-run theme, security-notice and workspace-trust prompts still apply.
+Only approve a folder you intend the coding CLI to access. Its default **No,
+exit** closes the native session without starting a chat; Promptbridge never
+preapproves trust or disables tool-permission checks.
 
-On interactive startup, check GitHub at most once every six hours. An available
-update offers **Update and restart**, **Skip for now**, or **Skip until the next
-version**. The last option suppresses all builds with that semantic version;
-manual **Updates → Check now** can still offer it. Automatic checks can be
-switched off. Noninteractive / print / help / version commands never prompt or
-fetch updates. An offline check leaves chat startup available (model inference
-still needs its provider connection).
+Chat files and preferences survive closing the program. No background service
+has to stay open overnight. Continue/resume operates on the native client's
+isolated saved chats for the same working folder.
 
-Updates use only this repository's original GitHub origin and fast-forward
-`main`. Repository visibility is unchanged. If GitHub access requires credentials,
-**Updates → Sign in** can open GitHub CLI browser sign-in when `gh` is installed. Updates never request
-an API key or administrator password. Source is trusted code from the repository,
-not a separate independently signed release channel: keep GitHub access secure.
+`$VISUAL` or `$EDITOR` edits staged private instruction files; nano/vi or multiline
+input are fallbacks. Replacement instructions remove the native default coding
+instructions; append retains them. Saved instruction mode reapplies on launch
+and resume. Explicit command-line instructions remain per-invocation options.
 
-Local source edits/untracked files, development branches, divergent history or
-another active chat block installation. Source is statically checked before
-checkout; native publisher/version checks run before restart. Failed checks
-restore the prior source/native pointer. **Updates → Roll back** restores the
-last matching installation; it also preserves local edits. Git/source updates
-never overwrite tracked private-state/runtime paths. Keys, saved chats, prompts
-and settings remain in the same ignored private state directory. Restart retains
-the working folder, CLI arguments and environment; an interrupted in-flight
-model request is not replayed. An active chat must finish before updating.
+## Models and saved defaults
 
-Legacy/ZIP packages get a managed Git checkout under `runtime/source-checkout`;
-their keys/chats stay at the old package's `state/` path. Normal cloned installs
-update their own checkout. Keep both in place. `promptbridge --update` checks
-manually in an interactive terminal; `promptbridge --version` shows the app
-version, while `claude-openapi --version` retains the native CLI version.
+The dashboard defaults to **free-only**; enabling paid/unknown pricing requires
+confirmation. Free-only refreshes public metadata and rejects nonzero or unknown
+input/output/cache prices, including in-session model switches. Decimal prices
+are compared exactly. This is a catalog-price guard, not a billing/access promise.
 
-## Choose any OpenCode text/chat model
-
-```sh
-# Easiest: choose a named model from a numbered menu and save it.
-claude-openapi --opencode-select-model --free
-claude-openapi
-
-# Fetch the current public catalog; no API key or inference call is needed.
-claude-openapi --opencode-models
-claude-openapi --opencode-models --free
-claude-openapi --opencode-models --free --json
-
-# One invocation; use an ID from the catalog, not a native family alias.
-claude-openapi --model big-pickle
-claude-openapi --model iceman-free --system-prompt "Your instructions"
-claude-openapi --model opencode/glm-5.3-flash-free
-
-# Persist the default privately, without touching the existing Claude setup.
-claude-openapi --opencode-set-model big-pickle
-claude-openapi
-
-# Require current catalog pricing to be zero; reject paid/unknown switches.
-claude-openapi --free-only --model big-pickle
-```
-
-Model precedence is per-run `--model` (or `--opencode-model`), then
+For direct CLI use, model precedence is `--model`/`--opencode-model`, then
 `PROMPTBRIDGE_MODEL`, then `OPENCODE_MODEL`, then the private saved default.
-Without any selection, the former `crouton-alpha-free` default is preserved for
-backward compatibility. If that ID is absent from the catalog, an interactive
-first launch asks you to choose a free-listed model rather than silently routing
-to something else. Literal example placeholders such as `MODEL_ID` are rejected
-with a link to the selection command. New IDs work without a code release; they need not be in
-the cached catalog. An `opencode/` prefix is accepted and removed before routing.
-Explicit request IDs are preserved, including native `/model` changes; native
-family/background aliases use the configured model rather than silently picking
-a different paid model. No automatic fallback is added.
+The dashboard passes its saved selection explicitly. Without a selection, the
+legacy `crouton-alpha-free` default remains; an interactive native launch can
+ask for another free-listed model if that legacy ID is missing. Example strings
+such as `MODEL_ID` are rejected rather than sent as model names.
 
-The public catalog lists supported text/chat models and prices, **not your
-account's access**. `--free-only` refreshes that catalog and permits only models
-whose input/output and any published cache prices are zero; unknown prices and
-paid models are rejected before sending the prompt. This is a catalog-based
-guard, not a provider billing guarantee. Decimal catalog numbers are retained
-as exact text in discovery JSON/cache so tiny nonzero prices never round to free. To check actual access, use
-`--opencode-check --model MODEL` (optionally `--free-only`).
+The native `/model` picker lists real OpenCode names/IDs and FREE or PAID/UNKNOWN
+labels. Enter saves a default; the native session-only option does not. Saved
+native default changes sync to Promptbridge when the CLI exits normally. A
+one-run `--model` override does not replace the saved preference. An explicit
+`--settings` file with its own `modelPicker` overrides the generated lineup.
 
-OpenCode currently restricts free-tier chat models to its own client, even when
-they appear in the public catalog. Provider key, region, quota and client rules
-remain authoritative; a free listing or local fixture success does not remove
-those restrictions. There is no client impersonation or access-rule bypass.
-Paid models are supported when explicitly selected and granted by your account.
-System One decision, embedding, audio-only and image-generation endpoints are
-not chat/coding-agent models and are excluded from this adapter's model list.
+Each native launch uses `--model`; Promptbridge does **not** set the hard
+`ANTHROPIC_MODEL` environment override that would outrank a saved `/model` default
+on later launches. Parent-shell Anthropic settings are removed only from the
+isolated child environment, not changed in your shell. Lower-priority startup
+and family/background model defaults keep native aliases from unexpectedly
+selecting a different paid provider model.
 
-Interactive startup loads the public catalog automatically when missing or more
-than 24 hours old. A refresh failure retains the cached list; `--free-only`
-always requires a fresh successful catalog fetch. Run `--opencode-models` to
-refresh manually. The native `/model` picker uses a private `modelPicker` lineup
-with real OpenCode names, IDs, and FREE or PAID/UNKNOWN labels, including
-non-Claude models which native gateway discovery filters out. Misleading
-built-in family aliases are hidden. Choose a default with Enter; changes are
-synced to the wrapper's saved preference when the CLI exits normally. Before
-launch, a stale native default is reconciled to the wrapper's saved preference;
-a per-run override is not saved by that reconciliation. The native
-session-only choice does not change that default. An explicit `--settings` file
-containing its own `modelPicker` takes precedence over this generated lineup.
+Actual request model IDs are preserved, including a Crouton selection after
+starting on Big Pickle. Native family aliases use the launch model. Changing
+this local selection does not change a provider's access rules.
 
-The catalog also supplies input/context limits for subsequent launches.
-Unknown IDs conservatively use 200K tokens; the legacy
-Crouton default retains its known 1M limit. Set
-`PROMPTBRIDGE_CONTEXT_TOKENS` explicitly for an uncataloged model with a smaller
-limit. Restart with `--model MODEL` when changing to a smaller-context model,
-since the native client's context budget is fixed when that process starts.
+Catalog names/prices are public metadata, not an account entitlement list.
+Interactive launches refresh missing/day-old metadata; an offline refresh keeps
+the cache. Free-only always needs a fresh successful fetch. New IDs need no
+release and an `opencode/` prefix is accepted. Embedding, audio-only,
+image-generation and decision endpoints are not chat models and are excluded.
 
-## System prompts
+The native context budget comes from catalog input/context limits at startup.
+Unknown IDs use a conservative 200K-token default; the legacy Crouton fallback
+is 1M. Use `PROMPTBRIDGE_CONTEXT_TOKENS` for an uncataloged smaller model. Relaunch
+when switching to a smaller context: changing `/model` does not rebuild the
+already-started client's context budget.
+
+## Troubleshooting
+
+### Crouton works in OpenCode, but Promptbridge returns 429
+
+For the message `FreeUsageLimitError` / “Free models work in OpenCode”, the
+provider rejected this direct API request. It is not a local Promptbridge usage
+counter. Clearing chats, reinstalling, changing a saved default or removing the
+old Big Pickle environment warning does not grant free-tier client access.
+
+Console and Go are separate routes. An API key alone does not establish a Go
+subscription; choose a route/model your account is entitled to use. See
+[Go client requirements](https://opencode.ai/docs/console/go/#where-can-i-use-it)
+and the [official Claude Code gateway setup](https://opencode.ai/docs/console/harnesses/claude-code/).
+There is no automatic subscription, route change or paid-model fallback.
+
+### Startup exits or no useful error is visible
+
+The dashboard keeps failures visible and distinguishes missing credentials,
+native exits and provider HTTP errors. **Settings → Last failure details** shows
+the last owner-only `state/last-launch.json` report. It contains fixed sanitized
+status summaries, not raw provider bodies, request headers, keys or prompt text,
+and is never uploaded. It describes the last failure, not a fresh access test.
+
+A 401 usually needs key/account attention; 403 means denied access; 429 may mean
+quota, rate limiting or the specific free-client restriction above. A successful
+local test is not proof that a live provider accepted your account/model.
+
+## Updates and rollback
+
+Interactive startup checks GitHub at most once every six hours. An update offers
+**Update and restart**, **Skip for now**, or **Skip until the next version**.
+The last option suppresses builds of that semantic version; **Updates → Check
+now** can still offer it. Automatic checks can be turned off. Noninteractive,
+print, help, version and provider-management commands never fetch/prompt for
+updates. An offline check does not block opening the dashboard.
+
+Updates require the original GitHub origin, a fast-forward `main` history, clean
+source files and no other active native chat. Linked/submodule and private
+state/runtime target paths are rejected. Source syntax and native publisher/
+version checks run before restart. Verification failure triggers rollback;
+concurrent edits that prevent rollback are preserved and reported for attention.
+**Updates → Roll back** restores the last matching installation; source edits
+and later mismatched updates block that action rather than being overwritten.
+
+Keys/chats/instructions stay in ignored private state. Restart preserves the
+working folder, CLI arguments and environment, but never replays an interrupted
+model request. Finish active chats before updating. GitHub credentials are used
+only if repository access requires them; **Updates → Sign in** can run `gh`
+browser sign-in when installed. No API key or administrator password is needed
+for updates. GitHub repository/account access is the source-code trust boundary,
+not a separately signed release channel.
+
+Normal Git installs update their checkout. Legacy/ZIP installs get a managed
+checkout under `<package>/runtime/source-checkout`; their state remains at
+`<package>/state`. Keep the package and its managed checkout in place.
+`promptbridge --update` is the interactive manual check. `promptbridge --version`
+shows the app version; `claude-openapi --version` retains the native CLI version.
+
+## Optional command-line reference
 
 ```sh
-claude-openapi --system-prompt "Your replacement instructions"
-claude-openapi --system-prompt-file /absolute/path/to/prompt.md
-claude-openapi --append-system-prompt "Additional instructions"
-claude-openapi --append-system-prompt-file /absolute/path/to/rules.md
+# Discovery is public; no key or inference is needed.
+promptbridge --opencode-models --free
+promptbridge --opencode-models --free --json
+promptbridge --opencode-select-model --free
+
+# Select a run or save a default (provider access is still required).
+promptbridge --free-only --model crouton-alpha-free
+promptbridge --opencode-set-model big-pickle
+promptbridge --model opencode/glm-5.3-flash-free
+
+# A tiny LIVE access test; unlike catalog listing, this sends a model request.
+promptbridge --opencode-check --free-only --model crouton-alpha-free
+
+# Per-run instructions; the dashboard also saves these without CLI commands.
+promptbridge --system-prompt "Replacement instructions"
+promptbridge --system-prompt-file /absolute/path/to/prompt.md
+promptbridge --append-system-prompt "Additional instructions"
+promptbridge --append-system-prompt-file /absolute/path/to/rules.md
 ```
 
-Replacement drops the native default coding instructions; appending retains
-them. `--system-prompt-snapshot off` lets edits apply when launching a resumed
-conversation. Other native options pass through unchanged.
+Other native arguments pass through. `--system-prompt-snapshot off` is added so
+instruction edits can apply on resumed conversations. Explicit later native
+options retain their normal behavior. Old `--crouton-help/status/check/set-key`
+and `--opencode-*` commands remain compatible.
 
-## Security and reliability
+## Private state, credentials and resource limits
 
-- Loopback-only ephemeral listener, fresh random token and constant-time token
-  comparison. The real provider key is not the native client's proxy token.
-- At most 24 connections; overflow is closed before worker creation. Absolute
-  10-second request-line/header deadlines also stop byte-drip clients. Body/client
-  socket inactivity is bounded separately from upstream inference.
-- Outbound HTTPS host/base-path allowlist, redirects disabled, explicit model
-  IDs preserved on both supported POST routes, and a 32 MiB request-body cap.
-- Native `anthropic-beta` and `anthropic-version` headers and query strings
-  reach the selected gateway unchanged, including token-count requests.
-- Selected retry/rate-limit/request-id headers are preserved; cookies and
-  hop-by-hop upstream headers are not copied blindly.
-- Key updates use an owner-only staged file, fsync and atomic replacement. A
-  failed update preserves the previous key. Empty saved keys get a clear error.
-- Private state/home/configuration folders use mode 0700; saved keys use 0600.
-  This is configuration separation, **not OS isolation**. The native client and
-  its tools keep the invoking user's filesystem authority and working directory.
-- Routine HTTP payloads and credentials are not logged. Direct connectivity
-  checks use bounded output and redact the literal key.
-- SIGTERM preserves exit status 143. Cleanup directly manages the launched CLI;
-  descendant tool lifecycle remains the native client's responsibility.
+State defaults to **`<source checkout>/state`**, not the caller's current folder.
+For a legacy managed installation it stays at `<package>/state`. Override with
+`PROMPTBRIDGE_STATE_DIR` (prefer an absolute path for consistent launches).
+Native home/configuration and chats are beneath that directory. This is
+configuration separation, **not an OS sandbox**: tools retain the invoking
+user's filesystem authority and working directory.
 
-Credential precedence: `OPENCODE_API_KEY`, then the private saved key, then a
-read-only lookup of an existing OpenCode API-key store. Go routes prefer the
-`opencode-go` record; Console routes prefer `opencode`. OAuth records are ignored.
-State defaults to `./state` and can be relocated with `PROMPTBRIDGE_STATE_DIR`.
-`PROMPTBRIDGE_TIMEOUT_SECONDS` adjusts the upstream socket timeout from its default
-120 seconds, within 1–3600 seconds. This is separate from inbound deadlines.
+Credential priority: `OPENCODE_API_KEY`, then the private saved key, then a
+read-only existing OpenCode API-key store. Console routes prefer `opencode`;
+Go routes prefer `opencode-go`. OAuth records are not used. Keys/JSON updates
+are owner-only staged writes, fsynced and atomically replaced; failed writes
+preserve the previous file. State folders use 0700 and key files use 0600.
 
-`PROMPTBRIDGE_UPSTREAM` can select a supported base URL:
-`https://opencode.ai/inference/anthropic` (default),
-`https://opencode.ai/inference/go/anthropic` (Go subscription), or
-`https://opencode.ai/zen` (legacy). Use the matching account/key; choosing a
-different route does not create model access. The legacy `CROUTON_STATE_DIR`,
-`CROUTON_UPSTREAM`, `CROUTON_TIMEOUT_SECONDS` variables remain supported, with
-their neutral replacements taking precedence.
+`PROMPTBRIDGE_UPSTREAM` accepts these HTTPS bases only:
 
-Use `--opencode-status` to inspect the model, nonsecret paths and key source.
-Old `--crouton-help/status/check/set-key` commands remain compatible.
-Do not publish state, environment files, transcripts, runtime binaries or keys.
-The supplied ignore rules exclude these paths.
+| Route | Base URL | Access notes |
+| --- | --- | --- |
+| Console (default) | `https://opencode.ai/inference/anthropic` | API account/model access; Console free-client limit applies |
+| Go | `https://opencode.ai/inference/go/anthropic` | Matching Go account/subscription and model/region eligibility |
+| Legacy compatibility | `https://opencode.ai/zen` | Legacy route, not the preferred setup |
 
-## Remove or rename-revert
+Legacy `CROUTON_STATE_DIR`, `CROUTON_UPSTREAM` and `CROUTON_TIMEOUT_SECONDS` remain
+supported, with the neutral variables taking precedence. `--opencode-status`
+shows model, nonsecret paths and key source.
+
+The proxy binds an ephemeral loopback port with a fresh constant-time-checked
+token, separate from the provider key. It caps connections at 24, bounds initial
+headers to 10 seconds and bodies to 32 MiB, and applies socket timeouts. Upstream
+inference defaults to 120 seconds; `PROMPTBRIDGE_TIMEOUT_SECONDS` accepts 1–3600.
+Redirects are disabled. Native version/beta headers and query strings are
+preserved; only selected retry/rate-limit/request-id response headers are passed.
+Cookies and hop-by-hop headers are not copied blindly. Routine request payloads
+and credentials are not logged. SIGTERM preserves exit status 143; descendant
+tool lifecycle stays the native client's responsibility.
+
+## Remove commands or revert the legacy alias
 
 ```sh
 ./rollback.sh --check
 ./rollback.sh
 ```
 
-Removal unlinks only the matching installed command and retains all state.
-For a custom `--bin-dir`, set the same `PROMPTBRIDGE_BIN_DIR` on removal.
-`./rollback-rename.sh` restores the former `claude-crouton` command name while
-keeping the **current hardened implementation**, not a vulnerable historical
-copy. It is self-contained, works after moving the package and performs explicit
-safety checks under optimized Python. Staging failure preserves the working
-new-name command. Run `./install.sh` to install the current name again.
+Removal unlinks only this installation's matching `promptbridge` and
+`claude-openapi` command links, retaining state/runtime. For a custom command
+directory, set the same `PROMPTBRIDGE_BIN_DIR` on removal. Unrelated commands and
+your original Claude executable are preserved.
 
-## Tests
+`./rollback-rename.sh` restores the legacy `claude-crouton` alias while retaining
+the current implementation and canonical `promptbridge` command. This is an
+alias operation, not a source downgrade. Keep paths stable or repair links before
+moving/removing a checkout. Rerun `./install.sh` to restore current aliases.
 
-CI runs on Ubuntu, macOS and Arch Linux; macOS and Arch also install the
-authenticated native runtime and exercise a real local tool round-trip.
+## Verification
 
-Portable, credential-free regression suite:
+CI runs on Ubuntu, macOS and Arch. Arch/macOS also install the authenticated
+native runtime, exercise real native tools/model changes, and complete actual
+first-run screens against a local dummy model backend.
 
 ```sh
 python3 -B -m unittest discover -s tests -v
-```
 
-On macOS or supported Linux after installing the verified runtime, exercise actual
-native prompt and Read-tool behavior against a local dummy model:
-
-```sh
+# After installing the verified native runtime:
 python3 -B tests/native_smoke.py --native-case replacement
 python3 -B tests/native_smoke.py --native-case append
 python3 -B tests/native_smoke.py --native-case file
-python3 -B tests/native_smoke.py --native-case tool-loop
 python3 -B tests/native_smoke.py --native-case tool-loop --model big-pickle
 python3 -B tests/native_picker_smoke.py
+python3 -B tests/dashboard_smoke.py
+python3 -B tests/first_launch_smoke.py --expect-explanation
+python3 -B tests/update_runtime_smoke.py
 ```
 
-These tests establish local compatibility, not successful live provider access.
-Live access requires a valid key, quota and provider permission. There is no
-automatic paid fallback.
+These tests send no live provider inference. Use the explicitly labeled access
+check above when you intend to test a real account/model. Keep keys, transcripts,
+state, environment files and runtime binaries out of Git; supplied ignore rules
+exclude them.
 
-## Future API port
+## Future API adapter
 
-Transport, credentials, local resource limits, command lifecycle and the native
-adapter are small separate functions/modules. An OpenAI API adapter will need
-explicit Responses/tool/stream conversion and its own credential setup and
-contract tests; changing a URL alone is not such a port.
+An OpenAI API adapter still needs deliberate request/tool/stream conversion,
+credential setup and contract tests. Changing the base URL alone is not a port.
 
-### Provider references
-
-- [Current OpenCode models, pricing and client restrictions](https://opencode.ai/docs/console/models/)
-- [Official Claude-compatible gateway and Go routing](https://opencode.ai/docs/console/harnesses/claude-code/)
+References: [OpenCode Console](https://opencode.ai/docs/console/models/),
+[Go](https://opencode.ai/docs/console/go/),
+[Claude Code model precedence](https://code.claude.com/docs/en/model-config#setting-your-model).

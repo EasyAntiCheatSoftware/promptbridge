@@ -1,5 +1,15 @@
 # Changes
 
+## 0.3.3 — Model-selection warning and accurate access documentation
+
+- Select each native launch with --model without hard-pinning ANTHROPIC_MODEL;
+  /model no longer warns that an old environment selection overrides its save.
+- Real native regression switches Big Pickle to Crouton, sends a message,
+  verifies the exact upstream request model, and checks the next saved default.
+- README now states the direct-API/free-tier client limitation before install,
+  explains the 429 separately from model selection, fixes state location and
+  command lifecycle wording, and lists the actual native test commands.
+
 ## 0.3.2 — Startup diagnostics and real first-run coverage
 
 - Start prompts privately for a missing machine-local OpenCode key instead of

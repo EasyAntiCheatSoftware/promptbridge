@@ -532,8 +532,10 @@ def isolated_env(proxy_url: str = "", token: str = "", model: str = MODEL, catal
         if not override.isascii() or not override.isdigit() or int(override) < 1:
             raise ValueError("PROMPTBRIDGE_CONTEXT_TOKENS must be a positive integer.")
         window = int(override)
+    # --model selects this launch. A hard ANTHROPIC_MODEL would override the
+    # default saved by /model on later native sessions and produce a stale warning.
     env.update({"ANTHROPIC_BASE_URL": proxy_url, "ANTHROPIC_AUTH_TOKEN": token,
-                "ANTHROPIC_API_KEY": "", "ANTHROPIC_MODEL": model,
+                "ANTHROPIC_API_KEY": "",
                 "ANTHROPIC_DEFAULT_MODEL": model,
                 "ANTHROPIC_SMALL_FAST_MODEL": model,
                 "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
