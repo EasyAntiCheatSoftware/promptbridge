@@ -2,6 +2,8 @@
 
 ## 0.3.1 — Reliable dashboard actions
 
+- Recognize application-keypad and CSI-u Enter; ignore unrelated terminal
+  reports/key-release events rather than treating them as Cancel.
 - Show immediate progress before starting/continuing/resuming a native chat.
 - Keep nonzero native exit statuses visible until acknowledged instead of
   immediately redrawing home over a failed launch.

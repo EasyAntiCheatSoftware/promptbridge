@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import select
+import re
 import shlex
 import shutil
 import subprocess
@@ -58,11 +59,19 @@ def read_key():
         if not first: return 'back'
         if first == b'\x1b':
             tail = b''
-            for _ in range(3):
+            for _ in range(64):
                 if not select.select([fd], [], [], .08)[0]: break
                 tail += os.read(fd, 1)
-                if tail.endswith((b'A', b'B', b'C', b'D')): break
-            return {b'[A': 'up', b'OA': 'up', b'[B': 'down', b'OB': 'down'}.get(tail, 'back')
+                if tail[:1] not in (b'[', b'O'): break
+                if len(tail) >= 2 and 0x40 <= tail[-1] <= 0x7e: break
+            if not tail: return 'back'  # A deliberate Escape, not a terminal report.
+            if tail == b'OM': return 'enter'  # Application-keypad Enter (SS3).
+            if re.fullmatch(rb'(?:O|\[)[0-9;]*A', tail): return 'up'
+            if re.fullmatch(rb'(?:O|\[)[0-9;]*B', tail): return 'down'
+            # CSI-u Enter and xterm modifyOtherKeys; ignore release events.
+            if re.fullmatch(rb'\[13(?::[0-9:]*)?(?:;[0-9]+(?::[12])?)?u', tail): return 'enter'
+            if re.fullmatch(rb'\[27;[0-9]+;13~', tail): return 'enter'
+            return 'ignored'
         return {b'\r': 'enter', b'\n': 'enter', b'\x03': 'back', b'\x04': 'back'}.get(first, first.decode(errors='ignore'))
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, previous)

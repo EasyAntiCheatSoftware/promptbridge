@@ -70,7 +70,8 @@ Choices persist across restarts; chats stay under the same isolated private
 state. No background service needs to stay open overnight. The original Claude
 setup remains separate. `NO_COLOR=1` disables colors; `TERM=dumb` uses numbered
 input instead of cursor navigation. Enter selects the default in either mode;
-invalid numbered input is retried instead of closing the menu. Chat launch
+application-keypad/CSI-u Enter is also recognized. Unrelated terminal reports
+are ignored rather than cancelling a menu. Invalid numbered input is retried instead of closing the menu. Chat launch
 progress is shown immediately, and a failed native exit stays visible until
 you acknowledge it. Use the keyboard rather than clicking terminal text. `$VISUAL` / `$EDITOR` edits staged private
 instructions, with nano/vi or multiline entry as fallbacks.

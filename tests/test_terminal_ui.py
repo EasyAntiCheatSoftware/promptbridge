@@ -86,6 +86,16 @@ class UITests(unittest.TestCase):
         check.assert_called_once_with(force=True);rollback.assert_called_once();restart.assert_called_once_with(ROOT,['--menu'])
         self.assertFalse(up.preferences_value()['automatic_checks'])
 
+    def test_extended_enter_arrow_and_terminal_report_parsing(self):
+        cases=[(b'\x1bOM','enter'),(b'\x1b[13u','enter'),(b'\x1b[13;1u','enter'),
+               (b'\x1b[13;1:1u','enter'),(b'\x1b[27;2;13~','enter'),
+               (b'\x1b[13;1:3u','ignored'),(b'\x1b[?1;2c','ignored'),
+               (b'\x1b[1;2A','up'),(b'\x1bOB','down')]
+        for encoded,expected in cases:
+            with self.subTest(encoded=encoded), patch.object(ui.termios,'tcgetattr',return_value=[]), patch.object(ui.termios,'tcsetattr') as restore, patch.object(ui.tty,'setraw'), patch.object(ui.os,'read',side_effect=[bytes([byte]) for byte in encoded]), patch.object(ui.select,'select',return_value=([0],[],[])):
+                self.assertEqual(ui.read_key(),expected)
+                restore.assert_called_once()
+
     def test_saved_model_prompt_resume_and_reopen(self):
         (self.state / 'model.json').write_text('{"model":"big-pickle"}')
         (self.state / 'system-prompt.md').write_text('Instructions')

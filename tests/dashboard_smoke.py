@@ -95,6 +95,8 @@ def check(command=None,source=None):
             send(b'4');until('Choose a model');home();send(b'2');home()
             assert json.loads((state/'model.json').read_text())['model']=='big-pickle'
             chat(b'\r')  # The reported failure: Enter on highlighted Start.
+            chat(b'\x1bOM')  # Application-keypad Enter on the same selection.
+            chat(b'\x1b[13u')  # Enhanced/CSI-u Enter, including macOS/Linux terminals.
             assert list((state/'claude/projects').rglob('*.jsonl')),'No saved native conversation'
             chat(b'2')  # Continue through the dashboard, real native session.
             send(b'3');until(r'Resume|Search conversations|Select.*conversation')
