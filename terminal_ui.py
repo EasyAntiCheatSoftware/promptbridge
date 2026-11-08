@@ -42,7 +42,7 @@ class Console:
         print(self.paint('─' * width, '34'))
 
     def message(self, text, *, error=False):
-        print(self.paint(text, '31' if error else '32'))
+        print(self.paint(text, '31' if error else '32'), flush=True)
 
     def pause(self):
         try: input('\nPress Enter to return… ')
@@ -76,12 +76,15 @@ def menu(console, options, *, default=0):
            and size.columns >= 40 and size.lines >= len(options) + 8)
     if not raw:
         for index, (label, _) in enumerate(options, 1): print(f'  {index}. {safe(label)}')
-        try: answer = input('Choice (q to go back): ').strip()
-        except (EOFError, KeyboardInterrupt): return None
-        if answer.isascii() and answer.isdigit() and len(answer) < 4 and 1 <= int(answer) <= len(options):
-            return options[int(answer) - 1][1]
-        return None
-    current = min(default, len(options) - 1)
+        while True:
+            try: answer = input('Choice (Enter selects highlighted/default; q goes back): ').strip()
+            except (EOFError, KeyboardInterrupt): return None
+            if not answer: return options[min(max(default, 0), len(options) - 1)][1]
+            if answer.casefold() == 'q': return None
+            if answer.isascii() and answer.isdigit() and len(answer) < 4 and 1 <= int(answer) <= len(options):
+                return options[int(answer) - 1][1]
+            console.message('Choose a listed number, Enter for the default, or q to go back.', error=True)
+    current = min(max(default, 0), len(options) - 1)
     lines = len(options) + 1
     def draw():
         for index, (label, _) in enumerate(options):
@@ -91,6 +94,7 @@ def menu(console, options, *, default=0):
             if len(line) > width: line = line[:width - 1] + '…'
             print('\r\x1b[2K' + console.paint(line, '1;36' if index == current else '37'))
         print('\r\x1b[2K' + console.paint('  ↑/↓ or j/k · Enter to choose · number shortcuts · q to go back', '2'))
+        sys.stdout.flush()
     draw()
     try:
         while True:
@@ -314,8 +318,18 @@ def dashboard(root, state, updater, launch_chat):
                                     ('Updates', 'updates'), ('Settings and status', 'settings'), ('Quit', 'quit')])
             if choice in (None, 'quit'): return 0
             if choice in ('new', 'continue', 'resume'):
+                action = {'new': 'Starting a new chat', 'continue': 'Continuing the last chat',
+                          'resume': 'Opening the saved-chat picker'}[choice]
+                console.message(action + '… Checking model settings and starting the coding CLI.')
                 arguments = chat_arguments(state, choice)
-                print(); launch_chat(arguments)
+                result = launch_chat(arguments)
+                if result not in (None, 0):
+                    console.message(f'Chat launch/session ended with exit status {result}. '
+                                    'Review the message above. Check the API key, selected model and provider access; '
+                                    'your saved chats are retained.', error=True)
+                    console.pause()
+                else:
+                    console.message('Returned from the coding CLI. Saved chats are retained.')
             elif choice == 'model': choose_model(state, console)
             elif choice == 'prompt': instructions(state, console)
             elif choice == 'key': set_key(state, console)

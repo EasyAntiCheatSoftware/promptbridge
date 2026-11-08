@@ -1,5 +1,15 @@
 # Changes
 
+## 0.3.1 — Reliable dashboard actions
+
+- Show immediate progress before starting/continuing/resuming a native chat.
+- Keep nonzero native exit statuses visible until acknowledged instead of
+  immediately redrawing home over a failed launch.
+- Compact/dumb-terminal menus accept Enter for the default and retry invalid
+  choices instead of silently cancelling or closing the dashboard.
+- Flush menu output before raw input, including buffered/embedded terminals.
+- End-to-end dashboard/native and menu routing regressions use local fixtures.
+
 ## 0.3.0 — Dashboard and consent-based updates
 
 - Colored keyboard-driven `promptbridge` dashboard; compatible legacy alias.

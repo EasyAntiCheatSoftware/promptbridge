@@ -25,6 +25,7 @@ jobs:
           python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
           python -B tests/native_picker_smoke.py
           python -B tests/update_runtime_smoke.py
+          python -B tests/dashboard_smoke.py
           ./rollback.sh --check
           ./rollback.sh
           test ! -e "$HOME/.local/bin/claude-openapi"
@@ -54,6 +55,7 @@ jobs:
             python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
             python -B tests/native_picker_smoke.py
             python -B tests/update_runtime_smoke.py
+            python -B tests/dashboard_smoke.py
             ./rollback.sh --check
             ./rollback.sh
             test ! -e "$HOME/.local/bin/claude-openapi"

@@ -69,7 +69,10 @@ instructions (append/replace/off), hidden key entry, updates and settings.
 Choices persist across restarts; chats stay under the same isolated private
 state. No background service needs to stay open overnight. The original Claude
 setup remains separate. `NO_COLOR=1` disables colors; `TERM=dumb` uses numbered
-input instead of cursor navigation. `$VISUAL` / `$EDITOR` edits staged private
+input instead of cursor navigation. Enter selects the default in either mode;
+invalid numbered input is retried instead of closing the menu. Chat launch
+progress is shown immediately, and a failed native exit stays visible until
+you acknowledge it. Use the keyboard rather than clicking terminal text. `$VISUAL` / `$EDITOR` edits staged private
 instructions, with nano/vi or multiline entry as fallbacks.
 
 On interactive startup, check GitHub at most once every six hours. An available

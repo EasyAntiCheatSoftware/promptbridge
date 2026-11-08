@@ -40,6 +40,52 @@ class UITests(unittest.TestCase):
         with patch('sys.stdout',self.output), patch('builtins.input',side_effect=EOFError):
             self.assertIsNone(ui.menu(ui.Console(), [('One',1)]))
 
+    def test_fallback_enter_selects_default_and_invalid_input_retries(self):
+        with patch('sys.stdout',self.output), patch('builtins.input',return_value=''):
+            self.assertEqual(ui.menu(ui.Console(), [('One',1),('Two',2)],default=1),2)
+        with patch('sys.stdout',self.output), patch('builtins.input',side_effect=['0','invalid','2']):
+            self.assertEqual(ui.menu(ui.Console(), [('One',1),('Two',2)]),2)
+        self.assertIn('Choose a listed number',self.output.getvalue())
+
+    def test_raw_menu_flushes_before_read(self):
+        self.output.isatty=lambda:True
+        with patch('sys.stdout',self.output), patch.object(sys.stdin,'isatty',return_value=True), patch.object(ui.shutil,'get_terminal_size',return_value=os.terminal_size((80,24))), patch.dict(os.environ,{'TERM':'xterm'}), patch.object(self.output,'flush') as flush, patch.object(ui,'read_key',return_value='enter'):
+            self.assertEqual(ui.menu(ui.Console(), [('One',1)]),1)
+            flush.assert_called()
+
+    def test_every_home_action_routes_to_its_handler(self):
+        (self.state/'model.json').write_text('{"model":"big-pickle"}')
+        up=updater.Updater(ROOT,self.state)
+        sequence=['new','continue','resume','model','prompt','key','updates','settings','quit']
+        with patch('sys.stdout',self.output), patch.object(ui,'menu',side_effect=sequence), patch.object(ui,'choose_model') as models, patch.object(ui,'instructions') as instructions, patch.object(ui,'set_key') as key, patch.object(ui,'updates') as updates, patch.object(ui,'settings') as settings:
+            from unittest.mock import Mock
+            launch=Mock(return_value=0)
+            self.assertEqual(ui.dashboard(ROOT,self.state,up,launch),0)
+        args=[call.args[0] for call in launch.call_args_list]
+        self.assertEqual(len(args),3)
+        self.assertNotIn('--continue',args[0]);self.assertNotIn('--resume',args[0])
+        self.assertIn('--continue',args[1]);self.assertIn('--resume',args[2])
+        for handler in (models,instructions,key,updates,settings):handler.assert_called_once()
+        self.assertIn('Starting a new chat',self.output.getvalue())
+
+    def test_failed_native_exit_remains_visible_until_acknowledged(self):
+        (self.state/'model.json').write_text('{"model":"big-pickle"}')
+        with patch('sys.stdout',self.output), patch.object(ui,'menu',side_effect=['new','quit']), patch.object(ui.Console,'pause') as pause:
+            ui.dashboard(ROOT,self.state,updater.Updater(ROOT,self.state),lambda _:7)
+        self.assertIn('exit status 7',self.output.getvalue());pause.assert_called_once()
+
+    def test_instruction_modes_and_update_submenu_actions(self):
+        (self.state/'system-prompt.md').write_text('Saved instructions')
+        with patch('sys.stdout',self.output), patch.object(ui,'menu',side_effect=['replace','append','off','back']):
+            ui.instructions(self.state,ui.Console())
+        self.assertEqual(ui.ui_preferences(self.state)['prompt_mode'],'off')
+        up=updater.Updater(ROOT,self.state)
+        with patch('sys.stdout',self.output), patch.object(ui,'menu',side_effect=['login','toggle','check','rollback',True,'back']), patch.object(ui.shutil,'which',return_value='/fixture/gh'), patch.object(ui.subprocess,'call',return_value=0) as sign_in, patch.object(up,'check',return_value=None) as check, patch.object(up,'rollback_last') as rollback, patch.object(ui,'restart') as restart:
+            ui.updates(up,ui.Console(),['--menu'])
+        sign_in.assert_called_once_with(['/fixture/gh','auth','login','--hostname','github.com','--web'])
+        check.assert_called_once_with(force=True);rollback.assert_called_once();restart.assert_called_once_with(ROOT,['--menu'])
+        self.assertFalse(up.preferences_value()['automatic_checks'])
+
     def test_saved_model_prompt_resume_and_reopen(self):
         (self.state / 'model.json').write_text('{"model":"big-pickle"}')
         (self.state / 'system-prompt.md').write_text('Instructions')
