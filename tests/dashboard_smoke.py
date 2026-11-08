@@ -99,7 +99,11 @@ def check(command=None,source=None):
             chat(b'\x1b[13u')  # Enhanced/CSI-u Enter, including macOS/Linux terminals.
             assert list((state/'claude/projects').rglob('*.jsonl')),'No saved native conversation'
             chat(b'2')  # Continue through the dashboard, real native session.
-            send(b'3');until(r'Resume|Search conversations|Select.*conversation')
+            send(b'3')
+            # Wait for the actual session row and input footer, not the early
+            # Resume title: slower macOS runners paint these in separate frames.
+            until(r'Run\s+the\s+local\s+dashboard\s+fixture')
+            until(r'Esc\s+to\s+cancel')
             send(b'\r');until(r'Big\s+Pickle\s+\[FREE\]');send(b'/exit\r');home()
             send(b'7');until('confirmation required');home();send(b'1');until('up to date');home();send(b'2');home();send(b'q');home()
             assert json.loads((state/'update-preferences.json').read_text())['automatic_checks'] is False
