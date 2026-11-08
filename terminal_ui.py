@@ -295,9 +295,16 @@ def settings(state, console, updater):
         except (OSError, ValueError): print('  API key needs attention.')
         print('  Private files: ' + safe(state)); print('  Model access and quotas are controlled by OpenCode.')
         choice = menu(console, [('Free-only: ' + ('on' if preference['free_only'] else 'off') + ' (toggle)', 'free'),
-                                ('Colors: ' + preference['color'] + ' (toggle)', 'color'), ('Back', 'back')])
+                                ('Colors: ' + preference['color'] + ' (toggle)', 'color'),
+                                ('Last failure details (no keys or prompts)', 'report'), ('Back', 'back')])
         if choice in (None, 'back'): return
-        if choice == 'free':
+        if choice == 'report':
+            report = read_object(state / 'last-launch.json')
+            if not report: console.message('No startup failure has been recorded.')
+            else:
+                for line in json.dumps(report, indent=2).splitlines(): print(safe(line))
+            console.pause()
+        elif choice == 'free':
             new = not preference['free_only']
             if new or menu(console, [('Keep free-only enabled', False), ('Allow explicitly chosen paid/unknown models', True)]) is True:
                 save_ui_preferences(state, free_only=new)
@@ -330,8 +337,23 @@ def dashboard(root, state, updater, launch_chat):
                 action = {'new': 'Starting a new chat', 'continue': 'Continuing the last chat',
                           'resume': 'Opening the saved-chat picker'}[choice]
                 console.message(action + '… Checking model settings and starting the coding CLI.')
+                key, _ = bridge.credential(state)
+                if not key:
+                    console.message('This installation needs its own OpenCode API key. Keys are private and are not copied through GitHub.')
+                    set_key(state, console)
+                    key, _ = bridge.credential(state)
+                    if not key:
+                        console.message('Chat was not started because no key was saved. You can try again from this menu.'); continue
                 arguments = chat_arguments(state, choice)
+                bridge.LAST_LAUNCH_FAILURE = None
                 result = launch_chat(arguments)
+                failure = bridge.LAST_LAUNCH_FAILURE
+                if failure:
+                    console.message(failure.get('message', 'Startup details saved locally.'), error=True)
+                    if failure.get('native_setup') in ('setup_pending', 'trust_pending'):
+                        console.message('Native setup or folder trust is still pending. Complete its prompts; No, exit closes the CLI without starting a chat.', error=True)
+                if result in (None, 0) and failure:
+                    console.pause()
                 if result not in (None, 0):
                     console.message(f'Chat launch/session ended with exit status {result}. '
                                     'Review the message above. Check the API key, selected model and provider access; '

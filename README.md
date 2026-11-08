@@ -67,7 +67,18 @@ Launch `promptbridge` from your project folder. The home screen includes new,
 continue and resume chat actions, a searchable/paged model list, saved system
 instructions (append/replace/off), hidden key entry, updates and settings.
 Choices persist across restarts; chats stay under the same isolated private
-state. No background service needs to stay open overnight. The original Claude
+state. A fresh installation prompts for a missing OpenCode key privately before
+starting a chat; keys are machine-local and are never transferred through GitHub.
+Native first-run theme, security notice and workspace-trust screens still apply.
+Only approve a folder you intend to let the coding CLI access; its default
+“No, exit” closes without starting a chat. The bridge never preapproves trust.
+
+Startup failures now keep a small owner-only `state/last-launch.json` report,
+shown under **Settings → Last failure details**. Missing keys, native exits and
+provider HTTP failures are distinguished. Reports contain fixed, sanitized
+status summaries—not raw provider bodies, headers, keys or prompt text—and
+are never uploaded. A provider 401/403/429 is not a successful model-access test.
+ No background service needs to stay open overnight. The original Claude
 setup remains separate. `NO_COLOR=1` disables colors; `TERM=dumb` uses numbered
 input instead of cursor navigation. Enter selects the default in either mode;
 application-keypad/CSI-u Enter is also recognized. Unrelated terminal reports

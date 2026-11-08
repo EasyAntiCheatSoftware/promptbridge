@@ -173,10 +173,10 @@ def upstream_url() -> str:
     return url
 
 
-def credential() -> tuple[str | None, str]:
+def credential(directory: Path | None = None) -> tuple[str | None, str]:
     if os.environ.get("OPENCODE_API_KEY", "").strip():
         return os.environ["OPENCODE_API_KEY"].strip(), "OPENCODE_API_KEY environment variable"
-    saved = state_path() / "opencode-api-key"
+    saved = (state_path() if directory is None else directory) / "opencode-api-key"
     if saved.is_file():
         value = saved.read_text().strip()
         if not value:
@@ -247,6 +247,30 @@ def save_key(directory: Path, value: str):
         staged.unlink(missing_ok=True)
 
 
+LAST_LAUNCH_FAILURE = None
+
+
+def remember_launch_failure(directory, value):
+    global LAST_LAUNCH_FAILURE
+    LAST_LAUNCH_FAILURE = dict(value)
+    try: atomic_json(directory, 'last-launch.json', LAST_LAUNCH_FAILURE)
+    except (OSError, ValueError): pass  # A diagnostic must not mask the original failure.
+
+
+def native_setup_status(directory):
+    path = directory / 'claude/.claude.json'
+    try:
+        if path.is_symlink() or path.stat().st_size > 4 * 1024 * 1024: return 'unknown'
+        value = json.loads(path.read_text())
+        if not isinstance(value, dict): return 'unknown'
+        if value.get('hasCompletedOnboarding') is not True: return 'setup_pending'
+        projects = value.get('projects', {})
+        project = projects.get(str(Path.cwd().resolve()), {}) if isinstance(projects, dict) else {}
+        if not isinstance(project, dict) or project.get('hasTrustDialogAccepted') is not True: return 'trust_pending'
+        return 'complete'
+    except (OSError, ValueError): return 'unknown'
+
+
 class ProxyServer(ThreadingHTTPServer):
     daemon_threads = True
     block_on_close = False
@@ -267,7 +291,24 @@ class ProxyServer(ThreadingHTTPServer):
         self._clients = set()
         self._clients_lock = threading.Lock()
         self.session = "ses_" + uuid.uuid4().hex
+        self.last_error = None
+        self._error_lock = threading.Lock()
         super().__init__(("127.0.0.1", 0), ProxyHandler)
+
+    def note_error(self, status, data):
+        # Never persist a raw provider body: it can echo prompts or headers.
+        error = data.get('error', {}) if isinstance(data, dict) else {}
+        raw = error.get('message', '') if isinstance(error, dict) else ''
+        free_limit = status == 429 and isinstance(raw, str) and ('FreeUsageLimitError' in raw or 'free usage limit' in raw.casefold())
+        if free_limit: detail = 'FreeUsageLimitError: OpenCode denied this client/model free-tier access or quota. No paid fallback was attempted.'
+        else: detail = {401: 'The provider rejected the API key; it may be expired.',
+                        403: 'The provider denied access to this model.',
+                        429: 'The provider rate limit or account quota was reached.',
+                        400: 'The provider rejected the model or request.',
+                        502: 'The provider connection failed or its gateway returned an error.'}.get(status, 'The provider returned an error.')
+        with self._error_lock:
+            self.last_error = {'stage': 'provider', 'http_status': status,
+                               'message': f'OpenCode HTTP {status}: {detail}'}
 
     def process_request(self, request, client_address):
         if not self._slots.acquire(blocking=False):
@@ -444,10 +485,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 data = json.loads(raw)
             except ValueError:
                 data = {"type": "error", "error": {"type": "api_error", "message": raw or f"OpenCode HTTP {exc.code}"}}
+            if self.path.split('?', 1)[0] == '/v1/messages': self.server.note_error(exc.code, data)
             return self.reply(exc.code, data, exc.headers)
         except (urllib.error.URLError, TimeoutError, OSError):
+            if self.path.split('?', 1)[0] == '/v1/messages':
+                self.server.note_error(502, {'error': {'message': 'OpenCode connection failed; check network access and retry.'}})
             return self.reply(502, {"type": "error", "error": {"type": "api_error", "message": "OpenCode connection failed; check network access and retry."}})
         with response:
+            if self.path.split('?', 1)[0] == '/v1/messages':
+                with self.server._error_lock: self.server.last_error = None
             self.send_response(response.status)
             self.send_header("Content-Type", response.headers.get("Content-Type", "application/json"))
             self.send_header("Connection", "close")
@@ -524,6 +570,8 @@ def check(key: str, upstream: str, model: str = MODEL) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global LAST_LAUNCH_FAILURE
+    LAST_LAUNCH_FAILURE = None
     args = list(sys.argv[1:] if argv is None else argv)
     args, explicit_model, free_only = model_arguments(args)
     aliases = {"--crouton-help": "--opencode-help", "--crouton-status": "--opencode-status", "--crouton-check": "--opencode-check", "--crouton-set-key": "--opencode-set-key"}
@@ -589,7 +637,9 @@ def main(argv: list[str] | None = None) -> int:
         return subprocess.call([runtime_executable(), *args], env=isolated_env(model=model, catalog=catalog))
     key, source = credential()
     if not key:
-        print(source, file=sys.stderr)
+        message = 'No OpenCode API key is configured. Choose Set or replace API key in the dashboard, or use --opencode-set-key.'
+        remember_launch_failure(state_path(), {'stage': 'credentials', 'exit_status': 2, 'message': message})
+        print(message, file=sys.stderr)
         return 2
     upstream = upstream_url()
     if args == ["--opencode-check"]:
@@ -620,7 +670,12 @@ def main(argv: list[str] | None = None) -> int:
         thread_started = True
         child = subprocess.Popen(command, env=env)
         result = child.wait()
-        return result if result >= 0 else 128 - result
+        result = result if result >= 0 else 128 - result
+        with server._error_lock: provider_error = server.last_error
+        if result or provider_error:
+            failure = provider_error or {'stage': 'native', 'message': f'The coding CLI returned exit status {result} without a provider error.'}
+            remember_launch_failure(state_path(), dict(failure, exit_status=result, native_setup=native_setup_status(state_path())))
+        return result
     except KeyboardInterrupt:
         if child is not None and child.poll() is None:
             child.send_signal(received_signal)

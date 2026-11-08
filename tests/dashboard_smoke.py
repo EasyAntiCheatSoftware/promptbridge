@@ -48,8 +48,7 @@ def check(command=None,source=None):
             +' path="/v1/messages/count_tokens" if url.split("?",1)[0].endswith("count_tokens") else "/v1/messages"\n'
             +' return original_open('+repr(f'http://127.0.0.1:{remote.server_port}')+'+path,key,payload,session,version,beta)\n'
             +'bridge.open_upstream=local\n'
-            +'original_main=bridge.main\n'
-            +'bridge.main=lambda args:original_main([*args,"--strict-mcp-config","--mcp-config",\'{"mcpServers":{}}\',"--permission-mode","default"])\n')
+            )
         env=dict(os.environ,PROMPTBRIDGE_STATE_DIR=str(state),PROMPTBRIDGE_NO_UPDATE_CHECK='1',
                  TERM='xterm-256color',PYTHONPATH=str(work),EDITOR=shlex.quote(sys.executable)+' '+shlex.quote(str(editor)),VISUAL='',
                  PROMPTBRIDGE_MODEL='',OPENCODE_MODEL='')

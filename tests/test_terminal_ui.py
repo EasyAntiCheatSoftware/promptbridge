@@ -25,6 +25,7 @@ class UITests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(); self.addCleanup(self.directory.cleanup)
         self.state = Path(self.directory.name)
+        ui.bridge.save_key(self.state, 'DUMMY_UI_TEST_KEY')
         self.output = io.StringIO(); self.output.isatty = lambda: False
 
     def test_colors_and_no_color(self):
@@ -95,6 +96,35 @@ class UITests(unittest.TestCase):
             with self.subTest(encoded=encoded), patch.object(ui.termios,'tcgetattr',return_value=[]), patch.object(ui.termios,'tcsetattr') as restore, patch.object(ui.tty,'setraw'), patch.object(ui.os,'read',side_effect=[bytes([byte]) for byte in encoded]), patch.object(ui.select,'select',return_value=([0],[],[])):
                 self.assertEqual(ui.read_key(),expected)
                 restore.assert_called_once()
+
+    def test_missing_key_is_entered_privately_before_launch(self):
+        (self.state/'opencode-api-key').unlink()
+        (self.state/'model.json').write_text('{"model":"big-pickle"}')
+        def enter_key(state,console):ui.bridge.save_key(state,'NEW_DUMMY_KEY')
+        from unittest.mock import Mock
+        launch=Mock(return_value=0)
+        with patch('sys.stdout',self.output), patch.object(ui,'menu',side_effect=['new','quit']), patch.object(ui,'set_key',side_effect=enter_key) as entry, patch.dict(os.environ,{'OPENCODE_API_KEY':'','XDG_DATA_HOME':str(self.state/'empty-auth')}):
+            ui.dashboard(ROOT,self.state,updater.Updater(ROOT,self.state),launch)
+        entry.assert_called_once();launch.assert_called_once()
+        self.assertIn('Keys are private',self.output.getvalue())
+        self.assertNotIn('NEW_DUMMY_KEY',self.output.getvalue())
+
+    def test_cancel_key_entry_stays_in_dashboard_without_exit_2(self):
+        (self.state/'opencode-api-key').unlink()
+        from unittest.mock import Mock
+        launch=Mock()
+        with patch('sys.stdout',self.output), patch.object(ui,'menu',side_effect=['new','quit']), patch.object(ui,'set_key'), patch.dict(os.environ,{'OPENCODE_API_KEY':'','XDG_DATA_HOME':str(self.state/'empty-auth')}):
+            ui.dashboard(ROOT,self.state,updater.Updater(ROOT,self.state),launch)
+        launch.assert_not_called();self.assertIn('no key was saved',self.output.getvalue())
+
+    def test_provider_reason_is_displayed_on_stdout_after_silent_native_exit(self):
+        (self.state/'model.json').write_text('{"model":"big-pickle"}')
+        def failed(args):
+            ui.bridge.remember_launch_failure(self.state,{'stage':'provider','exit_status':2,'http_status':429,'message':'OpenCode HTTP 429: FreeUsageLimitError'})
+            return 2
+        with patch('sys.stdout',self.output), contextlib.redirect_stderr(io.StringIO()), patch.object(ui,'menu',side_effect=['new','quit']), patch.object(ui.Console,'pause'):
+            ui.dashboard(ROOT,self.state,updater.Updater(ROOT,self.state),failed)
+        self.assertIn('OpenCode HTTP 429: FreeUsageLimitError',self.output.getvalue())
 
     def test_saved_model_prompt_resume_and_reopen(self):
         (self.state / 'model.json').write_text('{"model":"big-pickle"}')

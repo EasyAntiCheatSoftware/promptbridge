@@ -1,5 +1,16 @@
 # Changes
 
+## 0.3.2 — Startup diagnostics and real first-run coverage
+
+- Start prompts privately for a missing machine-local OpenCode key instead of
+  returning an opaque status 2; command-line missing-key failures remain status 2.
+- Preserve sanitized credential/native/provider failure stages in an owner-only
+  local report, and display provider status/reason outside the native screen.
+- Settings can show the last report without exposing keys, headers or prompts.
+- Test production native arguments without test-only permission/MCP overrides.
+- Exercise actual theme/security/trust screens from an absent native profile;
+  accepting a folder remains an explicit native UI choice, never a config patch.
+
 ## 0.3.1 — Reliable dashboard actions
 
 - Recognize application-keypad and CSI-u Enter; ignore unrelated terminal
