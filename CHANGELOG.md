@@ -1,5 +1,19 @@
 # Changes
 
+## 0.3.0 — Dashboard and consent-based updates
+
+- Colored keyboard-driven `promptbridge` dashboard; compatible legacy alias.
+- Saved model, instructions, hidden API key, new/continue/resume chat actions.
+- GitHub main update checks with update/skip/skip-until-next-version choices,
+  opt-out, manual checks, verification, restart and last-update rollback.
+- Stop for local edits, unexpected origin/history and active native sessions.
+  A stable bootstrap gates imports during source replacement.
+- Preserve private chats/keys/settings and original Claude configuration;
+  legacy packages get a managed Git checkout without relocating private state.
+- Arch/macOS installers provision both names and record the Python interpreter.
+- Local Git failure/restart/rollback, terminal navigation and persistence tests;
+  no provider requests are needed for updater verification.
+
 ## Reliability fixes
 
 - Reconcile stale native model defaults before launch, so selecting an older

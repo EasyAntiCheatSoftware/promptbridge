@@ -4,6 +4,9 @@ from pathlib import Path
 import tempfile
 
 
+NAMES = ("claude-openapi", "promptbridge")
+
+
 def matches(link: Path, target: Path) -> bool:
     return link.is_symlink() and os.readlink(link) == str(target)
 
@@ -12,7 +15,7 @@ def default_bin_dir(root: Path):
     if os.environ.get("PROMPTBRIDGE_BIN_DIR"):
         return Path(os.environ["PROMPTBRIDGE_BIN_DIR"]).expanduser().resolve()
     legacy = Path("/opt/homebrew/bin")
-    if matches(legacy / "claude-openapi", root / "bin/claude-openapi"):
+    if any(matches(legacy / name, root / "bin" / name) for name in NAMES):
         return legacy
     return Path.home() / ".local/bin"
 
@@ -34,6 +37,32 @@ def remove(root: Path, bindir: Path, name: str = "claude-openapi"):
     link = bindir / name
     if matches(link, root / "bin" / name):
         link.unlink()
+
+
+def preflight(root: Path, bindir: Path):
+    for name in NAMES:
+        target, destination = root / 'bin' / name, bindir / name
+        if not target.is_file() or not os.access(target, os.X_OK):
+            raise ValueError('Launcher missing or not executable; existing commands preserved.')
+        if os.path.lexists(destination) and not matches(destination, target):
+            raise ValueError('An unrelated command occupies the destination; choose --bin-dir.')
+
+
+def install_all(root: Path, bindir: Path):
+    preflight(root, bindir)
+    created = []
+    try:
+        for name in NAMES:
+            existed = os.path.lexists(bindir / name)
+            install(root, bindir, name)
+            if not existed: created.append(name)
+    except BaseException:
+        for name in created: remove(root, bindir, name)
+        raise
+
+
+def remove_all(root: Path, bindir: Path):
+    for name in NAMES: remove(root, bindir, name)
 
 
 def undo_rename(root: Path, bindir: Path):
@@ -77,12 +106,13 @@ if __name__ == "__main__":
     bindir = default_bin_dir(root)
     action = sys.argv[1] if len(sys.argv) == 2 else ""
     if action == "install":
-        install(root, bindir)
+        install_all(root, bindir)
     elif action == "remove":
-        remove(root, bindir)
+        remove_all(root, bindir)
     elif action == "undo-rename":
         undo_rename(root, bindir)
     elif action == "check":
         print("Matching command installed:", matches(bindir / "claude-openapi", root / "bin/claude-openapi"))
+        print("Matching dashboard installed:", matches(bindir / "promptbridge", root / "bin/promptbridge"))
     else:
         raise SystemExit("Choose install, remove, undo-rename or check.")

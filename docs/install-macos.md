@@ -34,7 +34,7 @@ GitHub CLI). Do not put tokens into clone URLs.
 ```
 
 One command downloads/verifies the independent native runtime and creates the
-separate `claude-openapi` command. New checkouts use `~/.local/bin`. An existing
+separate `promptbridge` dashboard and compatible `claude-openapi` command. New checkouts use `~/.local/bin`. An existing
 matching project command in `/opt/homebrew/bin` is retained when rerunning setup
 in its original folder. Unrelated commands are never replaced.
 
@@ -51,11 +51,13 @@ To choose another command directory, use `./install-macos.sh --bin-dir /your/bin
 ## 4. Configure and run
 
 ```sh
-claude-openapi --version
-claude-openapi --opencode-set-key
-claude-openapi --opencode-select-model --free
-claude-openapi --free-only --system-prompt "Your instructions"
+promptbridge
 ```
+
+Use the colored menu to save your API key (hidden input), choose a model,
+edit persistent instructions and start/continue/resume a chat. Arrow keys,
+Enter and number shortcuts work; there are no setup commands to copy. The
+legacy command and all existing direct CLI options remain available.
 
 Choose a model by its displayed number or ID; the choice is saved. Inference requires an
 OpenCode key; installation/catalog listing does not. Free-tier client rules,
@@ -66,14 +68,16 @@ quota and model permissions still apply. No OpenRouter account is involved.
 The runtime is downloaded from the official vendor source with its published
 SHA-256 checked, then Apple-trusted signing and the expected publisher/app
 identity are required before activation. Each launch checks publisher signing
-again. No ad-hoc signing, global vendor installer or automatic update is used.
+again. No ad-hoc signing or global vendor installer is used.
 
-Run `git pull --ff-only`, then `./install-macos.sh` to update. A valid existing
-runtime is reused. The installer records the selected Python locally, avoiding
+Open **Updates** in the dashboard to check, confirm an update and restart, or
+roll back. Startup checks offer update/skip/skip-until-next-version choices.
+Private GitHub access uses your Git credentials; `gh` browser sign-in is optional.
+Manual setup remains available after a `git pull --ff-only`. The installer records the selected Python locally, avoiding
 accidental use of an older system Python after PATH changes. If Python is moved
 or removed, rerun setup or set `PROMPTBRIDGE_PYTHON=/path/to/python3`.
 
-Remove only the matching installed command, keeping private state and runtime:
+Remove only the two matching installed commands, keeping private state and runtime:
 
 ```sh
 ./rollback.sh --check

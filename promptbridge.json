@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "version": "0.3.0",
+  "minimum_python": [
+    3,
+    12
+  ],
+  "entrypoint": "launcher.py",
+  "native_runtime": "2.1.318",
+  "bootstrap_protocol": 1
+}

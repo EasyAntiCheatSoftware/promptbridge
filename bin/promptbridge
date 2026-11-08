@@ -1,0 +1,30 @@
+#!/bin/sh
+# Both names dispatch to the same user-owned application; vendor Claude is untouched.
+COMMAND=${0##*/}
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK=$(readlink "$SELF") || exit 1
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname "$SELF")/.." && pwd) || exit 1
+SOURCE="$ROOT"
+if [ -f "$ROOT/runtime/source-checkout/launcher.py" ]; then
+  SOURCE="$ROOT/runtime/source-checkout"
+  PROMPTBRIDGE_STATE_DIR=${PROMPTBRIDGE_STATE_DIR:-${CROUTON_STATE_DIR:-$ROOT/state}}
+  export PROMPTBRIDGE_STATE_DIR
+fi
+PYTHON=${PROMPTBRIDGE_PYTHON:-python3}
+if [ -z "${PROMPTBRIDGE_PYTHON:-}" ] && [ -f "$ROOT/runtime/python-path" ]; then
+  IFS= read -r PYTHON < "$ROOT/runtime/python-path"
+fi
+PROMPTBRIDGE_COMMAND="$COMMAND"
+export PROMPTBRIDGE_COMMAND
+if [ -f "$SOURCE/runtime/bootstrap.py" ]; then
+  exec "$PYTHON" "$SOURCE/runtime/bootstrap.py" "$@"
+fi
+ENTRY="$SOURCE/launcher.py"
+if [ ! -f "$ENTRY" ]; then ENTRY="$SOURCE/bridge.py"; fi
+exec "$PYTHON" "$ENTRY" "$@"

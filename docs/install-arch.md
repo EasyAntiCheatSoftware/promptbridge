@@ -35,7 +35,7 @@ GitHub CLI). Do not put tokens into clone URLs.
 ```
 
 This single command downloads and verifies the independent native runtime and
-installs `claude-openapi` into `~/.local/bin`. If that folder is not on your PATH,
+installs `promptbridge` and `claude-openapi` into `~/.local/bin`. If that folder is not on your PATH,
 the installer prints the exact line to add. The usual setting is:
 
 ```sh
@@ -49,11 +49,13 @@ For another command directory, use `./install-arch.sh --bin-dir /your/bin`.
 ## 4. Configure and run
 
 ```sh
-claude-openapi --version
-claude-openapi --opencode-set-key
-claude-openapi --opencode-select-model --free
-claude-openapi --free-only --system-prompt "Your instructions"
+promptbridge
 ```
+
+Use the colored menu to save your API key (hidden input), choose a model,
+edit persistent instructions and start/continue/resume a chat. Arrow keys,
+Enter and number shortcuts work; there are no setup commands to copy. The
+legacy command and all existing direct CLI options remain available.
 
 Choose a model by its displayed number or ID; the choice is saved. An OpenCode key is needed
 for inference, not installation/catalog listing. OpenRouter is not involved.
@@ -69,11 +71,13 @@ GPG uses a temporary isolated keyring, not your own keys/settings. Each launch
 rechecks the signed manifest and executable hash. A new release bundle is
 activated only after verification succeeds; failures retain the previous runtime.
 
-To update, run `git pull --ff-only` in the checkout, then `./install-arch.sh`.
-A valid existing runtime is reused. If Python was moved/removed, rerun setup
+Open **Updates** in the dashboard to check, confirm an update and restart, or
+roll back. Startup checks offer update/skip/skip-until-next-version choices.
+Private GitHub access uses your Git credentials; `gh` browser sign-in is optional.
+Manual setup remains available after a `git pull --ff-only`. If Python was moved/removed, rerun setup
 with your current Python (or set `PROMPTBRIDGE_PYTHON=/path/to/python3`).
 
-To remove only this project's command, keeping private settings and runtime:
+To remove only this project's two commands, keeping private settings and runtime:
 
 ```sh
 ./rollback.sh --check

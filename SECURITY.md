@@ -20,6 +20,15 @@ Security invariants:
 8. Model discovery is public metadata only: never send credentials or prompts
    with catalog requests. Persist preferences/cache atomically with private modes.
 
+9. Updates require explicit consent, the original GitHub origin, fast-forward
+   main, a clean source checkout and no active native session. Never reset hard
+   or run repository hooks for an update. Reject linked/submodule and private
+   state/runtime target paths before checkout. Verify before restart and retain
+   a rollback record. The original GitHub account/repository is the code trust
+   boundary; this is not a separately signed release distribution channel.
+10. Keep the stable bootstrap and private update preferences outside Git source
+    replacement. Automated/print commands never fetch or display update prompts.
+
 This repository is not a filesystem sandbox or a replacement for the native
 client's tool-permission controls. Provider access/retention/quota policies are
 external boundaries. Report suspected issues privately to the repository owner.

@@ -37,20 +37,18 @@ brew install python git  # skip if Python 3.12+ and Git are already installed
 [macOS: complete setup, updates and removal](docs/install-macos.md).
 
 Both installers verify the native runtime, then install the separate
-`claude-openapi` command in `~/.local/bin` for new checkouts. Add that folder to
+`promptbridge` dashboard and compatible `claude-openapi` command in `~/.local/bin` for new checkouts. Add that folder to
 PATH if prompted. Keep the checkout in place. For a custom directory use
 `--bin-dir /your/bin` (or `PROMPTBRIDGE_BIN_DIR`). A matching existing project
 command in `/opt/homebrew/bin` is retained; unrelated commands, original Claude
 settings and shell profiles are preserved. Run project setup without `sudo`.
 `./install.sh` is the shared entry point if dependencies are already present.
 
-After installing:
-
-```sh
-claude-openapi --opencode-set-key
-claude-openapi --opencode-select-model --free
-claude-openapi --free-only
-```
+After installing, type **`promptbridge`**. Use arrows/Enter or number shortcuts:
+set a hidden API key, choose a real model name, edit saved instructions, start a
+chat, or continue/resume saved work. The default dashboard is free-only; enabling
+paid/unknown models requires explicit confirmation. `claude-openapi` with no
+arguments opens the same dashboard. Existing command-line options still work.
 
 OpenCode credentials and provider-granted access are required for inference,
 not installation. **No OpenRouter account is needed.** A proxy does not remove
@@ -60,7 +58,49 @@ macOS uses the expected Apple-trusted publisher signature and app identity.
 Linux uses a signed vendor manifest with a pinned GPG primary fingerprint and
 SHA-256. Authentication is checked at activation and each native launch.
 Failed runtime updates preserve the previous executable. No global vendor
-installer, ad-hoc signing or automatic runtime update is used.
+installer or ad-hoc signing is used. A confirmed Promptbridge update refreshes
+the native runtime only when its signed, pinned version changes.
+
+## Dashboard and updates
+
+Launch `promptbridge` from your project folder. The home screen includes new,
+continue and resume chat actions, a searchable/paged model list, saved system
+instructions (append/replace/off), hidden key entry, updates and settings.
+Choices persist across restarts; chats stay under the same isolated private
+state. No background service needs to stay open overnight. The original Claude
+setup remains separate. `NO_COLOR=1` disables colors; `TERM=dumb` uses numbered
+input instead of cursor navigation. `$VISUAL` / `$EDITOR` edits staged private
+instructions, with nano/vi or multiline entry as fallbacks.
+
+On interactive startup, check GitHub at most once every six hours. An available
+update offers **Update and restart**, **Skip for now**, or **Skip until the next
+version**. The last option suppresses all builds with that semantic version;
+manual **Updates → Check now** can still offer it. Automatic checks can be
+switched off. Noninteractive / print / help / version commands never prompt or
+fetch updates. An offline check leaves chat startup available (model inference
+still needs its provider connection).
+
+Updates use only this repository's original GitHub origin and fast-forward
+`main`. Repository visibility is unchanged. If GitHub access requires credentials,
+**Updates → Sign in** can open GitHub CLI browser sign-in when `gh` is installed. Updates never request
+an API key or administrator password. Source is trusted code from the repository,
+not a separate independently signed release channel: keep GitHub access secure.
+
+Local source edits/untracked files, development branches, divergent history or
+another active chat block installation. Source is statically checked before
+checkout; native publisher/version checks run before restart. Failed checks
+restore the prior source/native pointer. **Updates → Roll back** restores the
+last matching installation; it also preserves local edits. Git/source updates
+never overwrite tracked private-state/runtime paths. Keys, saved chats, prompts
+and settings remain in the same ignored private state directory. Restart retains
+the working folder, CLI arguments and environment; an interrupted in-flight
+model request is not replayed. An active chat must finish before updating.
+
+Legacy/ZIP packages get a managed Git checkout under `runtime/source-checkout`;
+their keys/chats stay at the old package's `state/` path. Normal cloned installs
+update their own checkout. Keep both in place. `promptbridge --update` checks
+manually in an interactive terminal; `promptbridge --version` shows the app
+version, while `claude-openapi --version` retains the native CLI version.
 
 ## Choose any OpenCode text/chat model
 

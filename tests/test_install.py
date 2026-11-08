@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import managed_install
 import command_links
 import install as setup
 import runtime_setup as runtime
@@ -155,13 +156,20 @@ class SetupTests(unittest.TestCase):
         launcher.write_text("#!/bin/sh\nexit 0\n")
         launcher.chmod(0o755)
         (root / "runtime").mkdir()
+        (root / "bin/promptbridge").write_bytes(launcher.read_bytes())
+        (root / "bin/promptbridge").chmod(0o755)
+        (root / "promptbridge.json").write_bytes((ROOT / "promptbridge.json").read_bytes())
+        (root / "bootstrap.py").write_bytes((ROOT / "bootstrap.py").read_bytes())
+        native = root / 'runtime/claude'
+        native.write_text('#!/bin/sh\necho "' + runtime.VERSION + ' (Claude Code)"\n')
+        native.chmod(0o755)
 
     def test_idempotent_setup_and_interpreter_receipt(self):
         with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
             root = Path(tmp) / "project"; root.mkdir()
             self.fixture(root)
             bindir = Path(tmp) / "new-command-dir"
-            with patch.object(runtime, "verify_runtime"), patch.object(runtime, "install") as download:
+            with patch.object(managed_install, "prepare_source", return_value=root), patch.object(managed_install, "runtime_module", return_value=runtime), patch.object(runtime, "verify_runtime"), patch.object(runtime, "install") as download:
                 setup.install(root, bindir)
                 setup.install(root, bindir)
                 download.assert_not_called()
@@ -172,15 +180,17 @@ class SetupTests(unittest.TestCase):
             self.assertFalse((bindir / "claude-openapi").exists())
 
     def test_collision_and_missing_launcher_fail_before_runtime(self):
-        for failure in ["collision", "launcher", "runtime-symlink"]:
+        for failure in ["collision", "canonical-collision", "launcher", "runtime-symlink"]:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp) / "project"; root.mkdir()
                 self.fixture(root)
                 bindir = Path(tmp) / "commands"; bindir.mkdir()
                 unrelated = bindir / "claude-openapi"
                 if failure == "collision": unrelated.write_text("preserve")
+                if failure == "canonical-collision": (bindir / "promptbridge").write_text("preserve")
                 if failure == "launcher": (root / "bin/claude-openapi").chmod(0o644)
                 if failure == "runtime-symlink":
+                    (root / "runtime/claude").unlink()
                     (root / "runtime").rmdir()
                     (root / "runtime").symlink_to(bindir)
                 with patch.object(runtime, "verify_runtime") as verify, patch.object(runtime, "install") as download:

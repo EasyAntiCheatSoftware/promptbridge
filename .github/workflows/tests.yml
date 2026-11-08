@@ -21,11 +21,14 @@ jobs:
         run: |
           ./install-macos.sh
           "$HOME/.local/bin/claude-openapi" --version
+          "$HOME/.local/bin/promptbridge" --version
           python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
           python -B tests/native_picker_smoke.py
+          python -B tests/update_runtime_smoke.py
           ./rollback.sh --check
           ./rollback.sh
           test ! -e "$HOME/.local/bin/claude-openapi"
+          test ! -e "$HOME/.local/bin/promptbridge"
   arch:
     runs-on: ubuntu-latest
     container: archlinux:base
@@ -41,15 +44,18 @@ jobs:
         run: |
           useradd -m bridge-test
           mkdir /tmp/promptbridge
-          tar --exclude=.git -cf - . | tar -xf - -C /tmp/promptbridge
+          tar -cf - . | tar -xf - -C /tmp/promptbridge
           chown -R bridge-test:bridge-test /tmp/promptbridge
           runuser -u bridge-test -- env HOME=/home/bridge-test sh -eu -c '
             cd /tmp/promptbridge
             ./install-arch.sh
             "$HOME/.local/bin/claude-openapi" --version
+            "$HOME/.local/bin/promptbridge" --version
             python -B tests/native_smoke.py --native-case tool-loop --model big-pickle
             python -B tests/native_picker_smoke.py
+            python -B tests/update_runtime_smoke.py
             ./rollback.sh --check
             ./rollback.sh
             test ! -e "$HOME/.local/bin/claude-openapi"
+            test ! -e "$HOME/.local/bin/promptbridge"
           '
