@@ -121,8 +121,19 @@ def check(command=None,source=None):
         finally:
             os.close(fd)
             if status is None:
-                with contextlib.suppress(ProcessLookupError):os.kill(pid,signal.SIGTERM)
-                with contextlib.suppress(ChildProcessError):os.waitpid(pid,0)
+                # A chat handles TERM and may return to the dashboard. Reap the
+                # entire disposable PTY group with a deadline, never hang CI.
+                with contextlib.suppress(ProcessLookupError):os.killpg(pid,signal.SIGTERM)
+                deadline=time.monotonic()+3
+                reaped=False
+                while time.monotonic()<deadline:
+                    try:waited,_=os.waitpid(pid,os.WNOHANG)
+                    except ChildProcessError:reaped=True;break
+                    if waited:reaped=True;break
+                    time.sleep(.05)
+                if not reaped:
+                    with contextlib.suppress(ProcessLookupError):os.killpg(pid,signal.SIGKILL)
+                    with contextlib.suppress(ChildProcessError):os.waitpid(pid,0)
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--command');parser.add_argument('--source')
